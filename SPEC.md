@@ -129,7 +129,7 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
 | v1 | F1–F7, F11–F13, F15, N1–N7 |
 | v1.1 | F8 nasse Strassen, F10 Regen/Wind |
 | v1.2 | F9 Nebel/Dunst, F14 Gewichtung anpassbar |
-| Später | Spots aus EXIF-GPS, Sync, Push, Mondphase, Kalibrierung aus F15-Daten |
+| Später | Spots aus EXIF-GPS, Sync, Push, Mondphase, Kalibrierung aus F15-Daten, Ortsanalyse (§11) |
 
 ## 8. Meilensteine und Status
 
@@ -185,3 +185,24 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
 ## 10. Offene Punkte
 
 - Kalibrierung der Score-Regeln und Bewölkungsschwellen nach 10–20 Treffern.
+
+## 11. Idee: Ortsanalyse (später, nicht geplant)
+
+Ort eingeben → App bewertet alle Strassen im Umkreis und schlägt die besten vor, ohne vorher Spots anzulegen.
+
+- **Ablauf:** Ort geokodieren (Nominatim oder swisstopo-Suche) → Strassensegmente im Radius (z. B. 1 km)
+  über Overpass (OSM) laden → Achse pro Segment automatisch → dieselben Fenster und Scores wie für Spots;
+  Wetter einmal für den Ort. Ergebnis: Strassen auf der Karte nach Ampel eingefärbt (Zeitschieber),
+  Rangliste mit Zeit, Sonnenrichtung und Blickrichtung; Übernahme als Spot per Tipp.
+- **Filter:** nur passende Strassentypen (Gassen, Fussgängerzonen, Wohnstrassen), gleich ausgerichtete
+  Segmente zusammenfassen; Abruf nur auf Knopfdruck, Ergebnis cachen (Nutzungsregeln Nominatim/Overpass).
+- **Grösste Schwäche:** Gebäudehöhen. Ohne 3D-Daten unklar, ob tiefe Sonne die Gasse erreicht.
+  Freie Quellen (Lizenz vor Umsetzung prüfen; swisstopo-Geodaten sind grundsätzlich OGD mit Quellenangabe,
+  einzelne Metadaten nennen aber «proprietary»):
+  - swissSURFACE3D Raster (Oberflächenmodell inkl. Gebäude, 0,5 m, 1-km-Kacheln, STAC-API) — erlaubt
+    eine echte Horizont-Berechnung pro Punkt; bevorzugte Option.
+  - swissBUILDINGS3D als 3D Tiles (geo.admin.ch) — Gebäudekörper, aufwendiger auszuwerten.
+  - OSM `height`/`building:levels` — lückenhaft, nur als Fallback.
+- **Voraussetzungen:** Kalibrierung der Score-Regeln mit F15-Treffern; neue Netzwerkziele in §6 aufnehmen.
+- **Offene Frage:** Umfang «Ortschaft» = Radius um einen Punkt oder ganze Gemeinde.
+
