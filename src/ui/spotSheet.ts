@@ -1,4 +1,5 @@
-import type { HorizonProfile } from '../lib/horizon';
+import { suggestAxis, type HorizonProfile } from '../lib/horizon';
+import { axisDiff } from '../lib/angles';
 import { cleanAxis, clampMinSunAlt, MIN_SUN_ALT_RANGE, NAME_MAX_LENGTH, NOTE_MAX_LENGTH } from '../lib/spot';
 import { button, el, formatDeg } from './dom';
 
@@ -35,6 +36,9 @@ export class SpotSheet {
   private readonly note = el('textarea', { rows: '2', maxlength: String(NOTE_MAX_LENGTH) });
   private readonly axis = el('input', { type: 'number', inputmode: 'decimal', min: '0', max: '179.9', step: '0.1', placeholder: '–' });
   private readonly axisHint = el('p', { class: 'hint' });
+  private readonly axisSuggest: HTMLButtonElement;
+  /** Set when the axis was filled in from the horizon and not yet confirmed by the user. */
+  private axisFromHorizon = false;
   private readonly minAlt = el('input', {
     type: 'number',
     inputmode: 'numeric',
@@ -53,6 +57,7 @@ export class SpotSheet {
     this.note.addEventListener('input', () => this.update({ note: this.note.value }));
     this.axis.addEventListener('change', () => {
       const raw = this.axis.value.trim().replace(',', '.');
+      this.axisFromHorizon = false;
       this.update({ axisDeg: raw === '' ? null : cleanAxis(Number(raw)) });
       this.render();
     });
@@ -63,11 +68,19 @@ export class SpotSheet {
 
     const step = (delta: number) => () => {
       if (!this.draft || this.draft.axisDeg === null) return;
+      this.axisFromHorizon = false;
       this.update({ axisDeg: cleanAxis(this.draft.axisDeg + delta) });
       this.render();
     };
 
     this.deleteBtn = button('Löschen', () => this.confirmDelete(), 'btn danger');
+    this.axisSuggest = button('', () => {
+      const s = this.draft?.horizon ? suggestAxis(this.draft.horizon) : null;
+      if (!s) return;
+      this.axisFromHorizon = true;
+      this.update({ axisDeg: s.axisDeg });
+      this.render();
+    }, 'btn');
     this.horizonBtn = button('Horizont berechnen', () => this.draft && handlers.onComputeHorizon({ ...this.draft }), 'btn');
 
     this.root = el(
@@ -89,6 +102,7 @@ export class SpotSheet {
           button('Auf Karte ziehen', () => this.draft && handlers.onDrawAxis({ ...this.draft }), 'btn'),
         ),
         this.axisHint,
+        this.axisSuggest,
       ),
       el(
         'label',
@@ -118,6 +132,7 @@ export class SpotSheet {
   }
 
   open(draft: Draft): void {
+    if (this.draft?.id !== draft.id) this.axisFromHorizon = false;
     this.draft = { ...draft };
     this.error.textContent = '';
     this.root.hidden = false;
@@ -138,7 +153,14 @@ export class SpotSheet {
 
   applyHorizon(profile: HorizonProfile): void {
     this.horizonBusy = false;
-    this.update({ horizon: profile });
+    const suggestion = suggestAxis(profile);
+    // Fill a missing axis from the street corridor; an existing one is only offered as a suggestion.
+    if (this.draft && this.draft.axisDeg === null && suggestion) {
+      this.axisFromHorizon = true;
+      this.update({ horizon: profile, axisDeg: suggestion.axisDeg });
+    } else {
+      this.update({ horizon: profile });
+    }
     this.render();
   }
 
@@ -163,7 +185,11 @@ export class SpotSheet {
     this.axisHint.textContent =
       d.axisDeg === null
         ? 'Ohne Achse gibt es keine Licht-entlang-der-Gasse-Fenster.'
-        : `Achse ${formatDeg(d.axisDeg)} / ${formatDeg(d.axisDeg + 180)}`;
+        : `Achse ${formatDeg(d.axisDeg)} / ${formatDeg(d.axisDeg + 180)}${this.axisFromHorizon ? ' – aus dem Horizont erkannt, auf der Karte prüfen.' : ''}`;
+    const suggestion = d.horizon ? suggestAxis(d.horizon) : null;
+    const differs = suggestion && (d.axisDeg === null || axisDiff(suggestion.axisDeg, d.axisDeg) > 3);
+    this.axisSuggest.hidden = !differs;
+    if (suggestion) this.axisSuggest.textContent = `Achse aus Horizont übernehmen: ${formatDeg(suggestion.axisDeg)}`;
     this.minAlt.value = String(d.minSunAltDeg);
     this.deleteBtn.hidden = d.id === null;
     this.horizonBtn.disabled = this.horizonBusy;

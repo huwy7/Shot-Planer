@@ -789,3 +789,11 @@ h3 {
   stroke-width: 1.5;
   stroke-dasharray: 3 3;
 }
+
+path.visibility {
+  fill: var(--c-sun);
+  fill-opacity: 0.18;
+  stroke: var(--c-sun);
+  stroke-width: 1.5;
+  stroke-opacity: 0.8;
+}

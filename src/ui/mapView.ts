@@ -56,6 +56,7 @@ export class MapView {
   private readonly draftLayer = L.layerGroup();
   private readonly locationLayer = L.layerGroup();
   private readonly rayLayer = L.layerGroup();
+  private readonly visibilityLayer = L.layerGroup();
 
   constructor(container: HTMLElement, options: MapViewOptions) {
     this.map = L.map(container, { zoomControl: false }).setView([START_VIEW.lat, START_VIEW.lon], START_VIEW.zoom);
@@ -75,6 +76,7 @@ export class MapView {
       if (id) options.onBaseLayerChange(id);
     });
 
+    this.visibilityLayer.addTo(this.map);
     this.spotsLayer.addTo(this.map);
     this.locationLayer.addTo(this.map);
     this.rayLayer.addTo(this.map);
@@ -126,6 +128,12 @@ export class MapView {
     const end = destination(lat, lon, azimuthDeg, SUN_RAY_LENGTH_M);
     L.polyline([[lat, lon], end], { className: 'sun-ray', interactive: false }).addTo(this.rayLayer);
     L.circleMarker(end, { radius: 8, className: 'sun-dot', interactive: false }).addTo(this.rayLayer);
+  }
+
+  /** Open-sky outline around a spot (long = open, short = blocked), to check the horizon against the map. */
+  showVisibility(points: [number, number][] | null): void {
+    this.visibilityLayer.clearLayers();
+    if (points) L.polygon(points, { className: 'visibility', interactive: false }).addTo(this.visibilityLayer);
   }
 
   clearSunRay(): void {

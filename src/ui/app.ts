@@ -5,6 +5,7 @@ import { clampLightSettings, type LightSettings } from '../lib/light';
 import { nextGood, planSpot, topWindows, type SpotPlan } from '../lib/score';
 import { cleanAxis, createSpot, updateSpot, validateSpotInput, type Spot } from '../lib/spot';
 import { sunAt } from '../lib/sun';
+import { visibilityOutline } from '../lib/horizon';
 import { hoursBetween, locationKey, weatherAt, type HourWeather } from '../lib/weather';
 import { deleteSpot, getSetting, listHits, listSpots, putHits, putSetting, putSpot, putSpots, type Db } from '../db/db';
 import { DAYS_AHEAD, DetailSheet, describeSun, type DetailView } from './detailSheet';
@@ -133,6 +134,17 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     if (mode.kind === 'edit') mapView.showDraft(mode.draft.lat, mode.draft.lon, mode.draft.axisDeg);
     else if (mode.kind === 'axis') mapView.showDraft(mode.draft.lat, mode.draft.lon, null, mode.first ?? undefined);
     else mapView.clearDraft();
+    drawVisibility();
+  }
+
+  function drawVisibility(): void {
+    let target: { lat: number; lon: number; horizon?: Spot['horizon'] } | undefined;
+    if (mode.kind === 'edit' || mode.kind === 'axis') target = mode.draft;
+    else if (mode.kind === 'detail') {
+      const id = mode.spotId;
+      target = spots.find((s) => s.id === id);
+    }
+    mapView.showVisibility(target?.horizon ? visibilityOutline(target.horizon, target.lat, target.lon) : null);
   }
 
   function revealOnce(key: string, lat: number, lon: number, sheetEl: HTMLElement): void {
