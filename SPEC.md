@@ -114,14 +114,23 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
 | Meilenstein | Inhalt | Status |
 | --- | --- | --- |
 | M0 | Gerüst: Vite/TS, PWA, Vitest, Pages-Deploy, Attributionen, Winkel-Helfer | erledigt |
-| M1 | Spots: Karte, Pin, Achse ziehen, Liste, IndexedDB, Export/Import (F1–F3a, N4, N7) | offen |
+| M1 | Spots: Karte, Pin, Achse ziehen, Liste, IndexedDB, Export/Import (F1–F3a, N4, N7) | erledigt |
 | M2 | Licht: Golden/Blue Hour, Höhe/Schatten, Achsen-Fenster (F4–F6) | offen |
 | M3 | Wetter: Open-Meteo, Bewölkungsklassen, Cache (F7, N3) | offen |
 | M4 | Score und Ansichten (F11–F13, F15) | offen |
 | v1.1 | F8, F10 | offen |
 | v1.2 | F9, F14 | offen |
 
-## 9. Offene Punkte
+## 9. Entscheide
+
+- 2026-10-16 (M1): Spot-Position per Fadenkreuz in der Kartenmitte statt per Tipp (Finger verdeckt den Punkt).
+  Standort-Knopf (GPS) zum Zentrieren. Standardkarte swisstopo grau, wählbar farbig oder OSM; Wahl wird gespeichert.
+- 2026-10-16 (M1): swisstopo-Geodaten sind frei nutzbar mit Quellenangabe «© swisstopo»
+  ([Bedingungen](https://www.swisstopo.admin.ch/en/conditions-geodata)).
+- 2026-10-16 (M1): Export über das iOS-Teilen-Menü («In Dateien sichern»), Fallback Download.
+  Import führt per ID zusammen, neueres `updatedAt` gewinnt, nichts wird gelöscht.
+- 2026-10-16 (M1): `fake-indexeddb` als Dev-Dependency für DB-Tests.
+
+## 10. Offene Punkte
 
 - Score-Regeln konkret (M4).
-- Lizenzbedingungen swisstopo-WMTS vor M1 nochmals prüfen.
