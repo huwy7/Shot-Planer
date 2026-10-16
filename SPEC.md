@@ -120,7 +120,8 @@ Gespeichert in IndexedDB. Schemaänderungen nur mit Migration (Versionsnummer de
 
 ## 6. Erlaubte Netzwerkziele zur Laufzeit
 
-Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.openstreetmap.org`.
+Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.openstreetmap.org`,
+`data.geo.admin.ch` (nur der 3D-Daten-Test in den Einstellungen, auf Knopfdruck; siehe §11).
 
 ## 7. Priorisierung
 
@@ -205,4 +206,16 @@ Ort eingeben → App bewertet alle Strassen im Umkreis und schlägt die besten v
   - OSM `height`/`building:levels` — lückenhaft, nur als Fallback.
 - **Voraussetzungen:** Kalibrierung der Score-Regeln mit F15-Treffern; neue Netzwerkziele in §6 aufnehmen.
 - **Offene Frage:** Umfang «Ortschaft» = Radius um einen Punkt oder ganze Gemeinde.
+
+### Stufe 1: Machbarkeitstest 3D-Daten (umgesetzt 2026-10-16)
+Knopf «3D-Daten testen» in den Einstellungen: sucht über die STAC-API die neueste swissSURFACE3D-Kachel
+am ersten Spot (sonst Bern), lädt per Range-Request höchstens 64 KB und liest den TIFF-Kopf (eigener
+Mini-Parser, keine Abhängigkeit). Zeigt Erreichbarkeit/CORS, Teilabruf, Kachelung, Auflösung und EPSG.
+Ergebnis auf dem iPhone entscheidet über Stufe 2.
+
+### Stufe 2: Horizont pro Spot (geplant, falls Stufe 1 ✅)
+Ausschnitt ~300 m um den Spot aus dem Oberflächenmodell, Horizontprofil alle 2° ab 1,6 m über Boden
+(Boden = tiefster Wert im 3-m-Umkreis), Sonne nur sichtbar über dem Horizont in ihrer Richtung; ersetzt
+das Pauschalfeld F3a (bleibt als manuelle Korrektur). Benötigt `geotiff.js` (Stack-Erweiterung) und
+geklärte Lizenz. Bekannte Grenze: Bäume im Modell, im Winter ohne Laub zu hoch.
 
