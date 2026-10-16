@@ -12,6 +12,7 @@ export interface SettingsHandlers {
   weatherLoading: boolean;
   onRefreshWeather: () => void;
   spotCount: number;
+  hitCount: number;
 }
 
 function numberField(label: string, hint: string, value: number, range: { min: number; max: number }, onChange: (v: number) => void) {
@@ -87,6 +88,12 @@ export function renderSettings(target: HTMLElement, handlers: SettingsHandlers):
       return b;
     })(),
     handlers.spotCount === 0 ? el('p', { class: 'hint' }, 'Wetter wird erst mit mindestens einem Spot geladen.') : '',
+    el('h2', {}, 'Treffer'),
+    el(
+      'p',
+      { class: 'muted' },
+      `${handlers.hitCount} Treffer gespeichert. Sie sind die Grundlage, um die Score-Regeln später zu kalibrieren, und sind im Export enthalten.`,
+    ),
     el('h2', {}, 'Sicherung'),
     el('p', { class: 'muted' }, 'Spots liegen nur auf diesem Gerät. Export schützt vor Datenverlust.'),
     el(

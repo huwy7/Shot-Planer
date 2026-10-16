@@ -1,13 +1,15 @@
 import { bearing } from '../lib/angles';
-import { backupFileName, createBackup, mergeSpots, parseBackup } from '../lib/backup';
-import { clampLightSettings, computeDayLight, localDay, type LightSettings } from '../lib/light';
+import { backupFileName, createBackup, mergeHits, mergeSpots, parseBackup } from '../lib/backup';
+import { createHit, type HitRating } from '../lib/hits';
+import { clampLightSettings, type LightSettings } from '../lib/light';
+import { nextGood, planSpot, topWindows, type SpotPlan } from '../lib/score';
 import { cleanAxis, createSpot, updateSpot, validateSpotInput, type Spot } from '../lib/spot';
 import { sunAt } from '../lib/sun';
-import { hoursBetween, locationKey } from '../lib/weather';
-import { deleteSpot, getSetting, listSpots, putSetting, putSpot, putSpots, type Db } from '../db/db';
-import { DetailSheet, describeSun, type DetailView } from './detailSheet';
+import { hoursBetween, locationKey, weatherAt, type HourWeather } from '../lib/weather';
+import { deleteSpot, getSetting, listHits, listSpots, putHits, putSetting, putSpot, putSpots, type Db } from '../db/db';
+import { DAYS_AHEAD, DetailSheet, describeSun, type DetailView } from './detailSheet';
 import { button, el } from './dom';
-import { renderSpotList } from './listView';
+import { renderSpotList, type ListSort } from './listView';
 import { isBaseLayerId, MapView } from './mapView';
 import { renderSettings } from './settingsView';
 import { SpotSheet, type Draft } from './spotSheet';
@@ -37,10 +39,14 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   let lightSettings: LightSettings = clampLightSettings(await getSetting<Partial<LightSettings>>(db, 'light'));
   /** Spot the map was last centered on for a sheet, so re-renders do not fight the user's panning. */
   let revealedFor: string | null = null;
+  let hitCount = (await listHits(db)).length;
+  let hitStatus = '';
+  let listSort: ListSort = (await getSetting<ListSort>(db, 'listSort')) === 'name' ? 'name' : 'next';
 
   const weather = new WeatherStore(db, () => {
     if (mode.kind === 'detail') renderMapChrome();
     if (tab === 'settings') renderSettingsView();
+    if (tab === 'list') renderList();
   });
   await weather.load();
 
@@ -70,6 +76,8 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   const detail = new DetailSheet({
     onDay: (dayIndex) => mode.kind === 'detail' && setMode({ ...mode, dayIndex, selected: null }),
     onSelect: (selected) => mode.kind === 'detail' && setMode({ ...mode, selected }),
+    onJump: (dayIndex, selected) => mode.kind === 'detail' && setMode({ ...mode, dayIndex, selected }),
+    onHit: (rating) => void recordHit(rating),
     onEdit: () => {
       if (mode.kind !== 'detail') return;
       const id = mode.spotId;
@@ -78,6 +86,14 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     },
     onClose: () => setMode({ kind: 'browse' }),
   });
+
+  function forecastHours(spot: Spot): HourWeather[] | undefined {
+    return weather.state.forecast?.locations[locationKey(spot.lat, spot.lon)];
+  }
+
+  function planFor(spot: Spot, now: Date): SpotPlan {
+    return planSpot(sunAt(spot.lat, spot.lon), spot, lightSettings, forecastHours(spot), now, DAYS_AHEAD);
+  }
   const mapSection = el('section', { class: 'view view-map' }, mapEl, crosshair, banner, toolbar, sheet.root, detail.root);
   const listSection = el('section', { class: 'view view-scroll', hidden: true });
   const settingsSection = el('section', { class: 'view view-scroll', hidden: true });
@@ -126,7 +142,9 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   function detailView(m: Extract<Mode, { kind: 'detail' }>, spot: Spot): DetailView {
     const now = new Date();
     const sun = sunAt(spot.lat, spot.lon);
-    const day = computeDayLight(sun, localDay(now, m.dayIndex), spot, lightSettings);
+    const plan = planFor(spot, now);
+    const scoredDay = plan.days[m.dayIndex];
+    const day = scoredDay.day;
     const selected = m.selected !== null && m.selected < day.windows.length ? m.selected : null;
     let ray: DetailView['ray'] = null;
     if (selected !== null) {
@@ -136,10 +154,20 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
       const pos = sun(now);
       if (pos.altitudeDeg > 0) ray = { pos, caption: `Sonne jetzt, ${describeSun(pos)}` };
     }
-    const hours = hoursBetween(weather.state.forecast?.locations[locationKey(spot.lat, spot.lon)], day.dayStart, day.dayEnd);
+    const hours = hoursBetween(forecastHours(spot), day.dayStart, day.dayEnd);
     const status =
       hours.length === 0 && !weather.state.loading ? `Keine Wetterprognose für diesen Tag. ${weatherStatus()}` : weatherStatus();
-    return { spot, dayIndex: m.dayIndex, day, now, selected, ray, weather: { hours, status } };
+    return {
+      spot,
+      dayIndex: m.dayIndex,
+      scoredDay,
+      top: topWindows(plan, now),
+      now,
+      selected,
+      ray,
+      weather: { hours, status },
+      hitStatus,
+    };
   }
 
   function renderMapChrome(): void {
@@ -199,9 +227,18 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   }
 
   function renderList(): void {
-    renderSpotList(listSection, spots, (id) => {
-      showTab('map');
-      openDetail(id);
+    const now = new Date();
+    const entries = spots.map((spot) => ({ spot, next: nextGood(planFor(spot, now), now) }));
+    renderSpotList(listSection, entries, listSort, now, {
+      onSelect: (id) => {
+        showTab('map');
+        openDetail(id);
+      },
+      onSort: (sort) => {
+        listSort = sort;
+        void putSetting(db, 'listSort', sort);
+        renderList();
+      },
     });
   }
 
@@ -224,6 +261,7 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   // --- actions ---
   function openDetail(id: string): void {
     if (!spots.some((s) => s.id === id)) return;
+    hitStatus = '';
     setMode({ kind: 'detail', spotId: id, dayIndex: 0, selected: null });
     void weather.refresh(spots);
   }
@@ -287,21 +325,50 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     openDetail(spot.id);
   }
 
+  async function recordHit(rating: HitRating): Promise<void> {
+    if (mode.kind !== 'detail') return;
+    const id = mode.spotId;
+    const spot = spots.find((s) => s.id === id);
+    if (!spot) return;
+    const now = new Date();
+    const active = upcomingNow(planFor(spot, now), now);
+    const hit = createHit(spot.id, rating, now, {
+      sun: sunAt(spot.lat, spot.lon)(now),
+      weather: weatherAt(forecastHours(spot), now),
+      activeWindows: active.map((s) => ({ kind: s.window.kind, score: s.score })),
+      score: active.length > 0 ? Math.max(...active.map((s) => s.score)) : null,
+      settings: lightSettings,
+    });
+    await putHits(db, [hit]);
+    hitCount++;
+    const scoreText = hit.inputs.score === null ? 'ausserhalb aller Fenster' : `Score jetzt ${hit.inputs.score}`;
+    hitStatus = `Treffer «${rating === 'good' ? 'gut' : 'schlecht'}» gespeichert (${scoreText}).`;
+    renderMapChrome();
+  }
+
+  /** Windows of today that contain `now`. */
+  function upcomingNow(plan: SpotPlan, now: Date) {
+    const t = now.getTime();
+    return plan.days[0].scored.filter((s) => s.window.start.getTime() <= t && s.window.end.getTime() > t);
+  }
+
   async function remove(id: string): Promise<void> {
     await deleteSpot(db, id);
+    hitCount = (await listHits(db)).length;
     spots = spots.filter((s) => s.id !== id);
     setMode({ kind: 'browse' });
   }
 
   async function exportSpots(): Promise<string> {
     const now = new Date();
-    const json = JSON.stringify(createBackup(spots, now), null, 2);
+    const hits = await listHits(db);
+    const json = JSON.stringify(createBackup(spots, hits, now), null, 2);
     const file = new File([json], backupFileName(now), { type: 'application/json' });
     // The iOS share sheet offers "In Dateien sichern"; downloads are unreliable in standalone PWAs.
     if (navigator.canShare?.({ files: [file] })) {
       try {
         await navigator.share({ files: [file] });
-        return `${spotCount(spots.length)} exportiert.`;
+        return `${spotCount(spots.length)} und ${hits.length} Treffer exportiert.`;
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return 'Export abgebrochen.';
       }
@@ -310,7 +377,7 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     const a = el('a', { href: url, download: file.name });
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    return `${spotCount(spots.length)} exportiert.`;
+    return `${spotCount(spots.length)} und ${hits.length} Treffer exportiert.`;
   }
 
   async function importSpots(file: File): Promise<string> {
@@ -318,9 +385,14 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     const merge = mergeSpots(spots, parsed.spots);
     await putSpots(db, merge.toWrite);
     spots = await listSpots(db);
+    const existingHits = await listHits(db);
+    const hitMerge = mergeHits(new Set(existingHits.map((h) => h.id)), new Set(spots.map((s) => s.id)), parsed.hits);
+    await putHits(db, hitMerge.toWrite);
+    hitCount = existingHits.length + hitMerge.toWrite.length;
     renderMapChrome();
     const parts = [`${merge.added} neu`, `${merge.updated} aktualisiert`, `${merge.unchanged} unverändert`];
-    if (parsed.rejected > 0) parts.push(`${parsed.rejected} ungültig übersprungen`);
+    if (hitMerge.toWrite.length > 0) parts.push(`${hitMerge.toWrite.length} Treffer`);
+    if (parsed.rejected + hitMerge.orphaned > 0) parts.push(`${parsed.rejected + hitMerge.orphaned} ungültig übersprungen`);
     return `Import: ${parts.join(', ')}.`;
   }
 
@@ -341,6 +413,7 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
       weatherLoading: weather.state.loading,
       onRefreshWeather: () => void weather.refresh(spots, true),
       spotCount: spots.length,
+      hitCount,
     });
   }
 

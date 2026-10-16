@@ -613,3 +613,92 @@ path.sun-dot {
   fill: var(--c-soft);
   background: var(--c-soft);
 }
+
+/* --- score (F11–F13) --- */
+:root {
+  --ampel-green: #1f9d55;
+  --ampel-yellow: #c99a06;
+  --ampel-red: #c0392b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ampel-green: #34c472;
+    --ampel-yellow: #e5b800;
+    --ampel-red: #ff6b5b;
+  }
+}
+
+h3 {
+  margin: 12px 0 6px;
+  font-size: 0.95rem;
+}
+
+.badge {
+  display: inline-block;
+  min-width: 2.2em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  color: #fff;
+  flex: none;
+}
+
+.badge.ampel-green {
+  background: var(--ampel-green);
+}
+
+.badge.ampel-yellow {
+  background: var(--ampel-yellow);
+  color: #16181b;
+}
+
+.badge.ampel-red {
+  background: var(--ampel-red);
+}
+
+.top-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.top-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.top-item .badge {
+  margin-top: 1px;
+}
+
+.hit-row {
+  margin: 4px 0;
+  flex-wrap: nowrap;
+}
+
+.hit-row .btn {
+  padding: 0 10px;
+  font-size: 0.9rem;
+}
+
+.next-good {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}

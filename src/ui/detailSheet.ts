@@ -1,8 +1,10 @@
 import { compassLabel } from '../lib/angles';
-import type { DayLight, LightWindow, WindowKind } from '../lib/light';
+import type { HitRating } from '../lib/hits';
+import type { LightWindow, WindowKind } from '../lib/light';
+import type { RankedWindow, ScoredDay, ScoredWindow } from '../lib/score';
 import type { Spot } from '../lib/spot';
 import { shadowFactor, type SunPos } from '../lib/sun';
-import { describeClouds, weatherAt, type HourWeather } from '../lib/weather';
+import { describeClouds, type HourWeather } from '../lib/weather';
 import { renderDayChart } from './dayChart';
 import { button, el, formatDeg } from './dom';
 
@@ -11,12 +13,16 @@ export const DAYS_AHEAD = 5;
 const time = new Intl.DateTimeFormat('de-CH', { hour: '2-digit', minute: '2-digit' });
 const weekday = new Intl.DateTimeFormat('de-CH', { weekday: 'short', day: 'numeric', month: 'numeric' });
 
-const KIND_LABEL: Record<WindowKind, string> = { blue: 'Blau', golden: 'Gold', along: 'Entlang', across: 'Quer' };
+export const KIND_LABEL: Record<WindowKind, string> = { blue: 'Blau', golden: 'Gold', along: 'Entlang', across: 'Quer' };
 
 export function dayLabel(dayStart: Date, index: number): string {
   if (index === 0) return 'Heute';
   if (index === 1) return 'Morgen';
   return weekday.format(dayStart);
+}
+
+export function formatRange(w: LightWindow): string {
+  return `${time.format(w.start)}–${time.format(w.end)}`;
 }
 
 function formatShadow(altitudeDeg: number): string | null {
@@ -32,11 +38,6 @@ export function describeSun(pos: SunPos): string {
 
 const signed = (deg: number): string => (deg < 0 ? `−${-deg}` : String(deg));
 
-function windowWeather(hours: HourWeather[], w: LightWindow): HTMLElement | null {
-  const h = weatherAt(hours, new Date((w.start.getTime() + w.end.getTime()) / 2));
-  return h ? el('span', { class: 'muted' }, describeClouds(h)) : null;
-}
-
 function windowDetail(w: LightWindow): string {
   const [lo, hi] = w.altitudeRange.map((a) => Math.round(a));
   const parts = [`Sonne ${lo === hi ? `${signed(lo)}°` : `${signed(lo)} bis ${signed(hi)}°`}`, `aus ${compassLabel(w.mid.azimuthDeg)}`];
@@ -46,26 +47,39 @@ function windowDetail(w: LightWindow): string {
   return parts.join(' · ');
 }
 
+/** "Licht die Gasse entlang +50, direkte Sonne +35" */
+export function reasonsText(s: ScoredWindow): string {
+  return s.reasons.map((r) => (r.points === 0 ? r.text : `${r.text} ${r.points > 0 ? '+' : '−'}${Math.abs(r.points)}`)).join(', ');
+}
+
+export function scoreBadge(s: { score: number; ampel: string }): HTMLElement {
+  return el('span', { class: `badge ampel-${s.ampel}`, 'aria-label': `Score ${s.score}` }, String(s.score));
+}
+
 export interface DetailView {
   spot: Spot;
   dayIndex: number;
-  day: DayLight;
+  scoredDay: ScoredDay;
+  top: RankedWindow[];
   now: Date;
   selected: number | null;
   /** Sun direction drawn on the map, with its caption. */
   ray: { pos: SunPos; caption: string } | null;
   /** Forecast hours of this day (empty when none) and a status line. */
   weather: { hours: HourWeather[]; status: string };
+  hitStatus: string;
 }
 
 export interface DetailHandlers {
   onDay: (index: number) => void;
   onSelect: (index: number | null) => void;
+  onJump: (dayIndex: number, index: number) => void;
+  onHit: (rating: HitRating) => void;
   onEdit: () => void;
   onClose: () => void;
 }
 
-/** Bottom sheet showing a spot's light windows for one day. */
+/** Bottom sheet showing a spot's best windows and its light windows for one day. */
 export class DetailSheet {
   readonly root = el('section', { class: 'sheet', hidden: true, 'aria-label': 'Licht am Spot' });
 
@@ -81,19 +95,39 @@ export class DetailSheet {
   }
 
   private render(v: DetailView): void {
-    const { spot, day, handlers } = { ...v, handlers: this.handlers };
+    const handlers = this.handlers;
+    const { day, scored } = v.scoredDay;
+    const dayStartOf = (i: number) => new Date(day.dayStart.getFullYear(), day.dayStart.getMonth(), day.dayStart.getDate() - v.dayIndex + i);
+
+    const top = el('ol', { class: 'top-list' });
+    if (v.top.length === 0) top.append(el('li', { class: 'muted' }, 'Keine kommenden Lichtfenster.'));
+    for (const t of v.top) {
+      const item = el(
+        'button',
+        { type: 'button', class: 'top-item' },
+        scoreBadge(t),
+        el(
+          'span',
+          { class: 'window-text' },
+          el('strong', {}, `${dayLabel(dayStartOf(t.dayIndex), t.dayIndex)} ${formatRange(t.window)} · ${KIND_LABEL[t.window.kind]}`),
+          el('span', { class: 'muted' }, reasonsText(t)),
+        ),
+      );
+      item.addEventListener('click', () => handlers.onJump(t.dayIndex, t.index));
+      top.append(el('li', {}, item));
+    }
 
     const days = el('div', { class: 'chips', role: 'tablist' });
     for (let i = 0; i < DAYS_AHEAD; i++) {
-      const start = new Date(day.dayStart.getFullYear(), day.dayStart.getMonth(), day.dayStart.getDate() - v.dayIndex + i);
-      const chip = button(dayLabel(start, i), () => handlers.onDay(i), 'chip');
+      const chip = button(dayLabel(dayStartOf(i), i), () => handlers.onDay(i), 'chip');
       chip.setAttribute('aria-selected', String(i === v.dayIndex));
       days.append(chip);
     }
 
     const list = el('ul', { class: 'window-list' });
-    if (day.windows.length === 0) list.append(el('li', { class: 'muted' }, 'Keine Lichtfenster an diesem Tag.'));
-    day.windows.forEach((w, i) => {
+    if (scored.length === 0) list.append(el('li', { class: 'muted' }, 'Keine Lichtfenster an diesem Tag.'));
+    scored.forEach((s, i) => {
+      const w = s.window;
       const item = el(
         'button',
         { type: 'button', class: `window-item kind-${w.kind}`, 'aria-pressed': String(v.selected === i) },
@@ -101,10 +135,11 @@ export class DetailSheet {
         el(
           'span',
           { class: 'window-text' },
-          el('span', { class: 'window-head' }, el('strong', {}, `${time.format(w.start)}–${time.format(w.end)}`), ` ${KIND_LABEL[w.kind]}`),
+          el('span', { class: 'window-head' }, el('strong', {}, formatRange(w)), ` ${KIND_LABEL[w.kind]} `, scoreBadge(s)),
           el('span', {}, w.label),
           el('span', { class: 'muted' }, windowDetail(w)),
-          windowWeather(v.weather.hours, w),
+          s.weather ? el('span', { class: 'muted' }, describeClouds(s.weather)) : '',
+          el('span', { class: 'muted small' }, reasonsText(s)),
         ),
       );
       item.addEventListener('click', () => handlers.onSelect(v.selected === i ? null : i));
@@ -116,14 +151,24 @@ export class DetailSheet {
       .filter(Boolean)
       .join(' · ');
 
-    const parts: (Node | null)[] = [
+    this.root.replaceChildren(
       el(
         'div',
         { class: 'row' },
-        el('h2', { class: 'grow' }, spot.name),
+        el('h2', { class: 'grow' }, v.spot.name),
         button('Bearbeiten', handlers.onEdit, 'btn'),
         button('✕', handlers.onClose, 'btn square'),
       ),
+      el('h3', {}, 'Beste Fenster (5 Tage)'),
+      top,
+      el(
+        'div',
+        { class: 'row hit-row' },
+        el('span', { class: 'muted grow' }, 'Jetzt vor Ort?'),
+        button('👍 War gut', () => handlers.onHit('good'), 'btn'),
+        button('👎 War schlecht', () => handlers.onHit('bad'), 'btn'),
+      ),
+      v.hitStatus ? el('p', { class: 'hint', role: 'status' }, v.hitStatus) : '',
       days,
       renderDayChart(day, v.now, v.weather.hours),
       el(
@@ -146,10 +191,9 @@ export class DetailSheet {
       ),
       el('p', { class: 'hint' }, v.weather.status),
       el('p', { class: 'hint' }, summary),
-      spot.axisDeg === null ? el('p', { class: 'hint warn' }, 'Keine Strassenachse gesetzt: Entlang/Quer fehlen. Unter «Bearbeiten» ziehen.') : null,
-      v.ray ? el('p', { class: 'hint' }, `Gelber Strahl auf der Karte: ${v.ray.caption}`) : null,
+      v.spot.axisDeg === null ? el('p', { class: 'hint warn' }, 'Keine Strassenachse gesetzt: Entlang/Quer fehlen. Unter «Bearbeiten» ziehen.') : '',
+      v.ray ? el('p', { class: 'hint' }, `Gelber Strahl auf der Karte: ${v.ray.caption}`) : '',
       list,
-    ];
-    this.root.replaceChildren(...parts.filter((p): p is Node => p !== null));
+    );
   }
 }
