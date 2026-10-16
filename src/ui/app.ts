@@ -1,7 +1,10 @@
 import { bearing } from '../lib/angles';
 import { backupFileName, createBackup, mergeSpots, parseBackup } from '../lib/backup';
+import { clampLightSettings, computeDayLight, localDay, type LightSettings } from '../lib/light';
 import { cleanAxis, createSpot, updateSpot, validateSpotInput, type Spot } from '../lib/spot';
+import { sunAt } from '../lib/sun';
 import { deleteSpot, getSetting, listSpots, putSetting, putSpot, putSpots, type Db } from '../db/db';
+import { DetailSheet, describeSun, type DetailView } from './detailSheet';
 import { button, el } from './dom';
 import { renderSpotList } from './listView';
 import { isBaseLayerId, MapView } from './mapView';
@@ -13,6 +16,7 @@ type Tab = 'map' | 'list' | 'settings';
 /** Map interaction modes. `place` picks a position at the crosshair, `axis` collects two taps. */
 type Mode =
   | { kind: 'browse' }
+  | { kind: 'detail'; spotId: string; dayIndex: number; selected: number | null }
   | { kind: 'place'; draft: Draft | null }
   | { kind: 'edit'; draft: Draft }
   | { kind: 'axis'; draft: Draft; first: [number, number] | null };
@@ -27,6 +31,9 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   let tab: Tab = 'map';
 
   const savedLayer = await getSetting(db, 'baseLayer');
+  let lightSettings: LightSettings = clampLightSettings(await getSetting<Partial<LightSettings>>(db, 'light'));
+  /** Spot the map was last centered on for a sheet, so re-renders do not fight the user's panning. */
+  let revealedFor: string | null = null;
 
   // --- layout ---
   const mapEl = el('div', { class: 'map' });
@@ -39,12 +46,23 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
       drawDraft();
     },
     onSave: (draft) => void save(draft),
-    onCancel: () => setMode({ kind: 'browse' }),
+    onCancel: () => (mode.kind === 'edit' && mode.draft.id ? openDetail(mode.draft.id) : setMode({ kind: 'browse' })),
     onDelete: (id) => void remove(id),
     onDrawAxis: (draft) => setMode({ kind: 'axis', draft, first: null }),
     onMove: (draft) => setMode({ kind: 'place', draft }),
   });
-  const mapSection = el('section', { class: 'view view-map' }, mapEl, crosshair, banner, toolbar, sheet.root);
+  const detail = new DetailSheet({
+    onDay: (dayIndex) => mode.kind === 'detail' && setMode({ ...mode, dayIndex, selected: null }),
+    onSelect: (selected) => mode.kind === 'detail' && setMode({ ...mode, selected }),
+    onEdit: () => {
+      if (mode.kind !== 'detail') return;
+      const id = mode.spotId;
+      const spot = spots.find((s) => s.id === id);
+      if (spot) setMode({ kind: 'edit', draft: { ...spot } });
+    },
+    onClose: () => setMode({ kind: 'browse' }),
+  });
+  const mapSection = el('section', { class: 'view view-map' }, mapEl, crosshair, banner, toolbar, sheet.root, detail.root);
   const listSection = el('section', { class: 'view view-scroll', hidden: true });
   const settingsSection = el('section', { class: 'view view-scroll', hidden: true });
 
@@ -65,7 +83,7 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     baseLayer: isBaseLayerId(savedLayer) ? savedLayer : 'swisstopo-grau',
     onBaseLayerChange: (id) => void putSetting(db, 'baseLayer', id),
     onSpotClick: (id) => {
-      if (mode.kind === 'browse') openSpot(id);
+      if (mode.kind === 'browse' || mode.kind === 'detail') openDetail(id);
     },
     onMapClick: (lat, lon) => {
       if (mode.kind === 'axis') handleAxisTap(lat, lon);
@@ -83,13 +101,56 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     else mapView.clearDraft();
   }
 
+  function revealOnce(key: string, lat: number, lon: number, sheetEl: HTMLElement): void {
+    if (revealedFor === key) return;
+    revealedFor = key;
+    mapView.reveal(lat, lon, sheetEl.offsetHeight);
+  }
+
+  function detailView(m: Extract<Mode, { kind: 'detail' }>, spot: Spot): DetailView {
+    const now = new Date();
+    const sun = sunAt(spot.lat, spot.lon);
+    const day = computeDayLight(sun, localDay(now, m.dayIndex), spot, lightSettings);
+    const selected = m.selected !== null && m.selected < day.windows.length ? m.selected : null;
+    let ray: DetailView['ray'] = null;
+    if (selected !== null) {
+      const w = day.windows[selected];
+      ray = { pos: w.mid, caption: `Fenstermitte, ${describeSun(w.mid)}` };
+    } else if (m.dayIndex === 0) {
+      const pos = sun(now);
+      if (pos.altitudeDeg > 0) ray = { pos, caption: `Sonne jetzt, ${describeSun(pos)}` };
+    }
+    return { spot, dayIndex: m.dayIndex, day, now, selected, ray };
+  }
+
   function renderMapChrome(): void {
     mapView.setSpots(spots, editingId());
     drawDraft();
     crosshair.hidden = mode.kind !== 'place';
-    banner.hidden = mode.kind === 'browse' || mode.kind === 'edit';
+    banner.hidden = mode.kind === 'browse' || mode.kind === 'edit' || mode.kind === 'detail';
     toolbar.replaceChildren();
+    if (mode.kind !== 'detail') {
+      detail.close();
+      mapView.clearSunRay();
+    }
+    if (mode.kind !== 'detail' && mode.kind !== 'edit') revealedFor = null;
     switch (mode.kind) {
+      case 'detail': {
+        const id = mode.spotId;
+        const spot = spots.find((s) => s.id === id);
+        if (!spot) {
+          setMode({ kind: 'browse' });
+          return;
+        }
+        const view = detailView(mode, spot);
+        toolbar.hidden = true;
+        sheet.close();
+        detail.open(view);
+        if (view.ray) mapView.showSunRay(spot.lat, spot.lon, view.ray.pos.azimuthDeg);
+        else mapView.clearSunRay();
+        revealOnce(`detail:${spot.id}`, spot.lat, spot.lon, detail.root);
+        break;
+      }
       case 'browse':
         toolbar.append(button('Standort', locate, 'btn'), el('span', { class: 'spacer' }), button('+ Spot', () => setMode({ kind: 'place', draft: null }), 'btn primary'));
         sheet.close();
@@ -107,7 +168,7 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
       case 'edit':
         toolbar.hidden = true;
         sheet.open(mode.draft);
-        mapView.reveal(mode.draft.lat, mode.draft.lon, sheet.root.offsetHeight);
+        revealOnce(`edit:${mode.draft.id ?? 'new'}:${mode.draft.lat},${mode.draft.lon}`, mode.draft.lat, mode.draft.lon, sheet.root);
         break;
       case 'axis':
         banner.textContent = mode.first ? 'Zweiten Punkt auf der Strasse antippen.' : 'Ersten Punkt auf der Strasse antippen.';
@@ -115,13 +176,13 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
         sheet.close();
         break;
     }
-    if (mode.kind !== 'edit') toolbar.hidden = false;
+    if (mode.kind !== 'edit' && mode.kind !== 'detail') toolbar.hidden = false;
   }
 
   function renderList(): void {
     renderSpotList(listSection, spots, (id) => {
       showTab('map');
-      openSpot(id);
+      openDetail(id);
     });
   }
 
@@ -141,10 +202,9 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   }
 
   // --- actions ---
-  function openSpot(id: string): void {
-    const spot = spots.find((s) => s.id === id);
-    if (!spot) return;
-    setMode({ kind: 'edit', draft: { ...spot } });
+  function openDetail(id: string): void {
+    if (!spots.some((s) => s.id === id)) return;
+    setMode({ kind: 'detail', spotId: id, dayIndex: 0, selected: null });
   }
 
   function confirmPlace(): void {
@@ -203,7 +263,7 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     const spot = existing ? updateSpot(existing, draft, now) : createSpot(draft, now);
     await putSpot(db, spot);
     spots = [...spots.filter((s) => s.id !== spot.id), spot];
-    setMode({ kind: 'browse' });
+    openDetail(spot.id);
   }
 
   async function remove(id: string): Promise<void> {
@@ -243,7 +303,19 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     return `Import: ${parts.join(', ')}.`;
   }
 
-  renderSettings(settingsSection, { onExport: exportSpots, onImport: importSpots });
+  async function changeLightSettings(next: LightSettings): Promise<LightSettings> {
+    lightSettings = clampLightSettings(next);
+    await putSetting(db, 'light', lightSettings);
+    renderMapChrome();
+    return lightSettings;
+  }
+
+  renderSettings(settingsSection, {
+    onExport: exportSpots,
+    onImport: importSpots,
+    lightSettings,
+    onLightSettings: changeLightSettings,
+  });
   showTab('map');
   renderMapChrome();
 }

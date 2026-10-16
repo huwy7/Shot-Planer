@@ -1,9 +1,20 @@
+import { LIGHT_SETTINGS_RANGE, type LightSettings } from '../lib/light';
 import { renderAttribution } from './attribution';
 import { button, el } from './dom';
 
 export interface SettingsHandlers {
   onExport: () => Promise<string>;
   onImport: (file: File) => Promise<string>;
+  lightSettings: LightSettings;
+  /** Persists and returns the clamped settings. */
+  onLightSettings: (s: LightSettings) => Promise<LightSettings>;
+}
+
+function numberField(label: string, hint: string, value: number, range: { min: number; max: number }, onChange: (v: number) => void) {
+  const input = el('input', { type: 'number', inputmode: 'numeric', min: String(range.min), max: String(range.max), step: '1' });
+  input.value = String(value);
+  input.addEventListener('change', () => onChange(Number(input.value)));
+  return { input, node: el('label', { class: 'field' }, el('span', {}, label), input, el('p', { class: 'hint' }, hint)) };
 }
 
 export function renderSettings(target: HTMLElement, handlers: SettingsHandlers): void {
@@ -35,11 +46,35 @@ export function renderSettings(target: HTMLElement, handlers: SettingsHandlers):
     storage.textContent = 'Speicherstatus nicht verfügbar.';
   }
 
+  let light = handlers.lightSettings;
+  const save = async (patch: Partial<LightSettings>) => {
+    light = await handlers.onLightSettings({ ...light, ...patch });
+    tolerance.input.value = String(light.toleranceDeg);
+    maxAlt.input.value = String(light.maxAltitudeDeg);
+  };
+  const tolerance = numberField(
+    'Toleranz Achse (±°)',
+    `Wie genau die Sonne parallel oder quer zur Strasse stehen muss. Standard 10, ${LIGHT_SETTINGS_RANGE.toleranceDeg.min}–${LIGHT_SETTINGS_RANGE.toleranceDeg.max}.`,
+    light.toleranceDeg,
+    LIGHT_SETTINGS_RANGE.toleranceDeg,
+    (v) => void save({ toleranceDeg: v }),
+  );
+  const maxAlt = numberField(
+    'Maximale Sonnenhöhe für Entlang/Quer (°)',
+    `Darüber fällt kaum Licht in die Gasse. Standard 20, ${LIGHT_SETTINGS_RANGE.maxAltitudeDeg.min}–${LIGHT_SETTINGS_RANGE.maxAltitudeDeg.max}.`,
+    light.maxAltitudeDeg,
+    LIGHT_SETTINGS_RANGE.maxAltitudeDeg,
+    (v) => void save({ maxAltitudeDeg: v }),
+  );
+
   const sources = el('div');
   renderAttribution(sources);
 
   target.replaceChildren(
     el('h1', {}, 'Einstellungen'),
+    el('h2', {}, 'Licht'),
+    tolerance.node,
+    maxAlt.node,
     el('h2', {}, 'Sicherung'),
     el('p', { class: 'muted' }, 'Spots liegen nur auf diesem Gerät. Export schützt vor Datenverlust.'),
     el(

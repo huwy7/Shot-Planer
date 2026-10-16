@@ -5,6 +5,7 @@ import type { Spot } from '../lib/spot';
 
 export const START_VIEW = { lat: 46.948, lon: 7.447, zoom: 14 } as const;
 const AXIS_HALF_LENGTH_M = 40;
+const SUN_RAY_LENGTH_M = 120;
 
 export type BaseLayerId = 'swisstopo-grau' | 'swisstopo-farbe' | 'osm';
 
@@ -54,6 +55,7 @@ export class MapView {
   private readonly spotsLayer = L.layerGroup();
   private readonly draftLayer = L.layerGroup();
   private readonly locationLayer = L.layerGroup();
+  private readonly rayLayer = L.layerGroup();
 
   constructor(container: HTMLElement, options: MapViewOptions) {
     this.map = L.map(container, { zoomControl: false }).setView([START_VIEW.lat, START_VIEW.lon], START_VIEW.zoom);
@@ -75,6 +77,7 @@ export class MapView {
 
     this.spotsLayer.addTo(this.map);
     this.locationLayer.addTo(this.map);
+    this.rayLayer.addTo(this.map);
     this.draftLayer.addTo(this.map);
     this.map.on('click', (e: L.LeafletMouseEvent) => options.onMapClick(e.latlng.lat, e.latlng.lng));
     this.onSpotClick = options.onSpotClick;
@@ -115,6 +118,18 @@ export class MapView {
 
   clearDraft(): void {
     this.draftLayer.clearLayers();
+  }
+
+  /** Draws a ray from the spot towards the sun (the direction light comes from). */
+  showSunRay(lat: number, lon: number, azimuthDeg: number): void {
+    this.rayLayer.clearLayers();
+    const end = destination(lat, lon, azimuthDeg, SUN_RAY_LENGTH_M);
+    L.polyline([[lat, lon], end], { className: 'sun-ray', interactive: false }).addTo(this.rayLayer);
+    L.circleMarker(end, { radius: 8, className: 'sun-dot', interactive: false }).addTo(this.rayLayer);
+  }
+
+  clearSunRay(): void {
+    this.rayLayer.clearLayers();
   }
 
   center(): { lat: number; lon: number } {
