@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSpot } from '../lib/spot';
-import { deleteSpot, getSetting, getSpot, listSpots, openDb, putSetting, putSpot, putSpots, type Db } from './db';
+import { deleteSpot, getForecast, getSetting, getSpot, listSpots, openDb, putForecast, putSetting, putSpot, putSpots, type Db } from './db';
 
 const NOW = new Date('2026-10-16T10:00:00.000Z');
 const spot = (id: string) => createSpot({ name: `Spot ${id}`, lat: 46.95, lon: 7.45, axisDeg: 30 }, NOW, id);
@@ -45,5 +45,15 @@ describe('db', () => {
     expect(await getSetting(d, 'baseLayer')).toBeUndefined();
     await putSetting(d, 'baseLayer', 'osm');
     expect(await getSetting<string>(d, 'baseLayer')).toBe('osm');
+  });
+});
+
+describe('forecast cache', () => {
+  it('stores and replaces the forecast', async () => {
+    const d = await freshDb();
+    expect(await getForecast(d)).toBeNull();
+    await putForecast(d, { fetchedAt: '2026-10-16T10:00:00.000Z', locations: { '46.95,7.45': [] } });
+    await putForecast(d, { fetchedAt: '2026-10-16T11:00:00.000Z', locations: {} });
+    expect(await getForecast(d)).toEqual({ fetchedAt: '2026-10-16T11:00:00.000Z', locations: {} });
   });
 });

@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { Spot } from '../lib/spot';
+import type { Forecast } from '../lib/weather';
 
 export const DB_NAME = 'shot-planer';
 /** Bump only together with a migration step in `upgrade`. */
@@ -78,4 +79,15 @@ export async function getSetting<T>(db: Db, key: string): Promise<T | undefined>
 
 export async function putSetting(db: Db, key: string, value: unknown): Promise<void> {
   await db.put('settings', { key, value });
+}
+
+const FORECAST_KEY = 'forecast';
+
+export async function getForecast(db: Db): Promise<Forecast | null> {
+  const record = await db.get('weatherCache', FORECAST_KEY);
+  return (record?.data as Forecast | undefined) ?? null;
+}
+
+export async function putForecast(db: Db, forecast: Forecast): Promise<void> {
+  await db.put('weatherCache', { key: FORECAST_KEY, fetchedAt: forecast.fetchedAt, data: forecast });
 }
