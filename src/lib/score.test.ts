@@ -73,6 +73,15 @@ describe('scoreWindow', () => {
     expect(scoreWindow(win('along', 7, 8, [0, 12]), HARD, true).score).toBe(100);
   });
 
+  it('replaces the weather bonus when buildings hide the sun in golden hour', () => {
+    const s = scoreWindow(win('golden', 7, 8, [-4, 6]), HARD, false, true);
+    expect(s.reasons.map((r) => [r.text, r.points])).toEqual([
+      ['Goldene Stunde', 35],
+      ['Sonne hinter Gebäuden', -20],
+    ]);
+    expect(s.score).toBe(15);
+  });
+
   it('never leaves 0..100', () => {
     expect(scoreWindow(win('blue', 6, 7), null).score).toBeGreaterThanOrEqual(0);
   });

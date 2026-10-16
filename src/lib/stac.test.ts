@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dsmItemsUrl, parseStacAssets, pickDsmAsset } from './stac';
+import { dsmItemsUrl, parseStacAssets, pickDsmAsset, pickTileAssets } from './stac';
 
 const asset = (href: string, extra: Record<string, unknown> = {}) => ({ href, type: 'image/tiff; application=geotiff; profile=cloud-optimized', ...extra });
 
@@ -34,7 +34,9 @@ describe('STAC DSM lookup', () => {
     const url = new URL(dsmItemsUrl(46.948, 7.447));
     expect(url.hostname).toBe('data.geo.admin.ch');
     expect(url.pathname).toContain('ch.swisstopo.swisssurface3d-raster/items');
-    expect(url.searchParams.get('bbox')).toBe('7.44650,46.94750,7.44750,46.94850');
+    expect(url.searchParams.get('bbox')).toBe('7.44634,46.94755,7.44766,46.94845');
+    const wide = new URL(dsmItemsUrl(46.948, 7.447, 300)).searchParams.get('bbox')!.split(',').map(Number);
+    expect(wide[3] - wide[1]).toBeCloseTo((2 * 300) / 111320, 4);
   });
 
   it('keeps only https GeoTIFFs on data.geo.admin.ch and reads the resolution', () => {
@@ -51,5 +53,13 @@ describe('STAC DSM lookup', () => {
   it('tolerates junk', () => {
     expect(parseStacAssets(null)).toEqual([]);
     expect(parseStacAssets({ features: [null, { assets: 'x' }] })).toEqual([]);
+  });
+});
+
+describe('pickTileAssets', () => {
+  it('keeps the best asset per 1-km tile', () => {
+    const extra = { ...response, features: [...response.features, { id: 'swisssurface3d-raster_2021_2601-1199', properties: { datetime: '2021-01-01T00:00:00Z' }, assets: { b: asset('https://data.geo.admin.ch/x/b_0.5_2056_5728.tif') } }] };
+    const tiles = pickTileAssets(parseStacAssets(extra));
+    expect(tiles.map((t) => t.itemId).sort()).toEqual(['swisssurface3d-raster_2021_2601-1199', 'swisssurface3d-raster_2023_2600-1199']);
   });
 });

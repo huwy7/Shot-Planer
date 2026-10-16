@@ -3,9 +3,11 @@
 export const STAC_BASE = 'https://data.geo.admin.ch/api/stac/v1';
 export const DSM_COLLECTION = 'ch.swisstopo.swisssurface3d-raster';
 
-export function dsmItemsUrl(lat: number, lon: number): string {
-  const d = 0.0005; // ~50 m box around the point
-  const bbox = [lon - d, lat - d, lon + d, lat + d].map((v) => v.toFixed(5)).join(',');
+/** Items intersecting a box of `radiusM` around the point (default ~50 m). */
+export function dsmItemsUrl(lat: number, lon: number, radiusM = 50): string {
+  const dLat = radiusM / 111320;
+  const dLon = radiusM / (111320 * Math.cos((lat * Math.PI) / 180));
+  const bbox = [lon - dLon, lat - dLat, lon + dLon, lat + dLat].map((v) => v.toFixed(5)).join(',');
   return `${STAC_BASE}/collections/${DSM_COLLECTION}/items?bbox=${bbox}&limit=20`;
 }
 
@@ -70,4 +72,14 @@ export function pickDsmAsset(assets: readonly StacAsset[]): StacAsset | null {
   return (
     [...assets].sort((a, b) => (a.gsd ?? 99) - (b.gsd ?? 99) || (b.datetime ?? '').localeCompare(a.datetime ?? ''))[0] ?? null
   );
+}
+
+/** One asset per 1-km tile (finest, newest); the tile key is the "2600-1199" suffix of the item id. */
+export function pickTileAssets(assets: readonly StacAsset[]): StacAsset[] {
+  const byTile = new Map<string, StacAsset[]>();
+  for (const a of assets) {
+    const key = /(\d{4}-\d{4})$/.exec(a.itemId)?.[1] ?? a.itemId;
+    byTile.set(key, [...(byTile.get(key) ?? []), a]);
+  }
+  return [...byTile.values()].map((list) => pickDsmAsset(list)).filter((a): a is StacAsset => a !== null);
 }

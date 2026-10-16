@@ -1,4 +1,5 @@
 import { normalizeAxis } from './angles';
+import { parseHorizon, type HorizonProfile } from './horizon';
 
 export interface Spot {
   id: string;
@@ -10,6 +11,8 @@ export interface Spot {
   axisDeg: number | null;
   /** Minimum sun altitude in degrees at which the sun clears the buildings (SPEC F3a). */
   minSunAltDeg: number;
+  /** Computed obstruction profile (SPEC §11); missing on spots from before it existed. */
+  horizon?: HorizonProfile | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -25,6 +28,7 @@ export interface SpotInput {
   lon: number;
   axisDeg?: number | null;
   minSunAltDeg?: number;
+  horizon?: HorizonProfile | null;
 }
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -62,6 +66,7 @@ export function createSpot(input: SpotInput, now: Date, id: string = crypto.rand
     lon: input.lon,
     axisDeg: cleanAxis(input.axisDeg),
     minSunAltDeg: clampMinSunAlt(input.minSunAltDeg),
+    horizon: input.horizon ?? null,
     createdAt: ts,
     updatedAt: ts,
   };
@@ -93,6 +98,8 @@ export function parseSpot(raw: unknown): Spot | null {
     lon: r.lon,
     axisDeg: r.axisDeg as number | null | undefined,
     minSunAltDeg: r.minSunAltDeg as number | undefined,
+    // An invalid profile is dropped rather than rejecting the whole spot; it can be recomputed.
+    horizon: r.horizon === undefined || r.horizon === null ? null : parseHorizon(r.horizon),
   };
   if (validateSpotInput(input) !== null) return null;
   return {

@@ -5,6 +5,7 @@ import {
   DEFAULT_LIGHT_SETTINGS,
   litFacadeDirection,
   localDay,
+  sunVisible,
   type LightWindow,
   type WindowKind,
 } from './light';
@@ -142,5 +143,31 @@ describe('real sun in Bern', () => {
       }
     }
     expect(performance.now() - t0).toBeLessThan(1000);
+  });
+});
+
+describe('horizon profile', () => {
+  const eastWest = { axisDeg: 90, minSunAltDeg: 0 };
+  // 12° high buildings to the east (60–120°), open elsewhere.
+  const deg = Array.from({ length: 360 }, (_, i) => (i >= 60 && i <= 120 ? 12 : 0));
+
+  it('delays the along window until the sun clears the eastern buildings', () => {
+    const open = computeDayLight(fakeSun, DAY, eastWest, DEFAULT_LIGHT_SETTINGS);
+    const blocked = computeDayLight(fakeSun, DAY, { ...eastWest, horizon: { deg } }, DEFAULT_LIGHT_SETTINGS);
+    const first = (d: typeof open) => d.windows.find((w) => w.kind === 'along')!;
+    expect(span(first(open))[0]).toBeCloseTo(5 + 1 / 3, 2);
+    // Sun reaches 12° when 40 − 5·(12 − h) = 12, i.e. h = 6.4; the window still ends at 6.67 h.
+    expect(span(first(blocked))[0]).toBeCloseTo(6.4, 2);
+    expect(span(first(blocked))[1]).toBeCloseTo(6 + 2 / 3, 2);
+    // Evening along window (west) is unaffected.
+    expect(ofKind(blocked.windows, 'along')).toHaveLength(2);
+  });
+
+  it('sunVisible respects both the manual minimum and the profile', () => {
+    const geom = { axisDeg: null, minSunAltDeg: 5, horizon: { deg } };
+    expect(sunVisible({ azimuthDeg: 90, altitudeDeg: 10 }, geom)).toBe(false);
+    expect(sunVisible({ azimuthDeg: 90, altitudeDeg: 13 }, geom)).toBe(true);
+    expect(sunVisible({ azimuthDeg: 200, altitudeDeg: 4 }, geom)).toBe(false);
+    expect(sunVisible({ azimuthDeg: 200, altitudeDeg: 6 }, geom)).toBe(true);
   });
 });

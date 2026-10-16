@@ -1,6 +1,6 @@
 // Transparent score rules (SPEC §2 "Score-Logik"). Every rule yields points and a German reason.
 
-import { computeDayLight, GOLDEN_HOUR, localDay, type DayLight, type LightSettings, type LightWindow } from './light';
+import { computeDayLight, GOLDEN_HOUR, localDay, sunVisible, type DayLight, type LightSettings, type LightWindow, type SpotGeometry } from './light';
 import type { SunFn } from './sun';
 import { classifyClouds, motifWindows, weatherAt, wetStreetAt, type HourWeather, type MotifWindow } from './weather';
 
@@ -18,6 +18,8 @@ export const SCORE_RULES = {
   afterglowMaxLow: 30,
   /** F8: wet street, dry from above. Blue hour gets more because city lights reflect best then. */
   wetStreet: { default: 15, blue: 20 },
+  /** Golden hour while buildings hide the sun at the spot: no direct light, only sky light. */
+  sunHidden: -20,
 } as const;
 
 export interface ScoreReason {
@@ -40,7 +42,7 @@ export function ampelFor(score: number): Ampel {
   return 'red';
 }
 
-export function scoreWindow(w: LightWindow, weather: HourWeather | null, wetStreet = false): ScoredWindow {
+export function scoreWindow(w: LightWindow, weather: HourWeather | null, wetStreet = false, sunHidden = false): ScoredWindow {
   const r = SCORE_RULES;
   const reasons: ScoreReason[] = [];
   const baseText = {
@@ -57,7 +59,9 @@ export function scoreWindow(w: LightWindow, weather: HourWeather | null, wetStre
   }
 
   const cls = weather ? classifyClouds(weather) : null;
-  if (!weather || !cls) {
+  if (w.kind === 'golden' && sunHidden) {
+    reasons.push({ points: r.sunHidden, text: 'Sonne hinter Gebäuden' });
+  } else if (!weather || !cls) {
     reasons.push({ points: 0, text: 'ohne Wetter' });
   } else if (w.kind === 'blue') {
     const text = { hard: 'klarer Himmel', mixed: 'klarer Himmel mit Wolken', soft: 'bedeckt' }[cls];
@@ -102,7 +106,7 @@ export interface SpotPlan {
 /** Light windows with scores for `days` local days starting today. */
 export function planSpot(
   sun: SunFn,
-  geom: { axisDeg: number | null; minSunAltDeg: number },
+  geom: SpotGeometry,
   settings: LightSettings,
   hours: readonly HourWeather[] | undefined,
   now: Date,
@@ -111,7 +115,12 @@ export function planSpot(
   const result: ScoredDay[] = [];
   for (let i = 0; i < days; i++) {
     const day = computeDayLight(sun, localDay(now, i), geom, settings);
-    const scored = day.windows.map((w) => scoreWindow(w, weatherAt(hours, windowMid(w)), wetStreetAt(hours, windowMid(w))));
+    const scored = day.windows.map((w) => {
+      const mid = windowMid(w);
+      // Only judged above the geometric horizon; below it the sun is not "hidden by buildings".
+      const hidden = !!geom.horizon && w.mid.altitudeDeg > 0 && !sunVisible(w.mid, geom);
+      return scoreWindow(w, weatherAt(hours, mid), wetStreetAt(hours, mid), hidden);
+    });
     // Values cover the preceding hour, so the day's hours are those stamped in (dayStart, dayEnd].
     const dayHours = (hours ?? []).filter((h) => h.time > day.dayStart.getTime() && h.time <= day.dayEnd.getTime());
     const motifs = motifWindows(dayHours);

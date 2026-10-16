@@ -1,4 +1,5 @@
 import { angularDiff, axisDiff, compassLabel, normalizeDeg } from './angles';
+import { horizonAt } from './horizon';
 import type { SunFn, SunPos } from './sun';
 
 export interface LightSettings {
@@ -44,6 +45,14 @@ export interface DayLight {
 export interface SpotGeometry {
   axisDeg: number | null;
   minSunAltDeg: number;
+  /** Obstruction profile; when present the sun must also clear it in its own direction. */
+  horizon?: { deg: number[] } | null;
+}
+
+/** True when the sun reaches the spot: above the manual minimum and, if known, above the horizon profile. */
+export function sunVisible(p: SunPos, geom: SpotGeometry): boolean {
+  if (p.altitudeDeg < Math.max(geom.minSunAltDeg, 0)) return false;
+  return !geom.horizon || p.altitudeDeg > horizonAt(geom.horizon, p.azimuthDeg);
 }
 
 const SAMPLE_STEP_MS = 2 * 60 * 1000;
@@ -126,7 +135,7 @@ const inAltitude =
 function axisPredicates(geom: SpotGeometry, settings: LightSettings): { along: Predicate; across: Predicate } | null {
   if (geom.axisDeg === null) return null;
   const axis = geom.axisDeg;
-  const altOk = inAltitude(Math.max(geom.minSunAltDeg, 0), settings.maxAltitudeDeg);
+  const altOk = (p: SunPos) => p.altitudeDeg <= settings.maxAltitudeDeg && sunVisible(p, geom);
   return {
     along: (p) => altOk(p) && axisDiff(p.azimuthDeg, axis) <= settings.toleranceDeg,
     across: (p) => altOk(p) && axisDiff(p.azimuthDeg, axis) >= 90 - settings.toleranceDeg,
