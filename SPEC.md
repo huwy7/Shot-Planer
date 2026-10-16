@@ -228,6 +228,8 @@ Ergebnis iPhone 2026-10-16: ✅ (Katalog HTTP 200, Range 206, COG 512er-Kacheln,
 - Hinderniswinkel je 1° wahre Himmelsrichtung (Meridiankonvergenz berücksichtigt), gespeichert am Spot,
   im Backup enthalten; nach «Position neu setzen» verworfen.
 - Grenzen: keine fernen Hügel (> 300 m); Bäume zählen ganzjährig; Pin auf einem Dach verfälscht den Boden.
-- Lizenz: swisstopo-OGD mit Quellenangabe angenommen (STAC-Metadaten nennen «proprietary»); Bestätigung
-  bei swisstopo angefragt durch den Nutzer.
+- Lizenz: von swisstopo schriftlich bestätigt (2026-10-16, Monika Grau, auf Anfrage des Nutzers):
+  Nutzung von swissSURFACE3D zur Horizontberechnung in dieser privaten, nicht-kommerziellen App mit
+  Quellenangabe «swissSURFACE3D © swisstopo» ist in Ordnung. Gilt nur für diesen Anwendungsfall; bei
+  kommerzieller Nutzung oder Veröffentlichung für Dritte neu anfragen.
 
