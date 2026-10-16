@@ -30,8 +30,11 @@ Kern ist ein Score pro Spot und Zeitfenster, der Licht- und Wetterkriterien komb
   Zusätzlich Grad-Eingabe zum Feinjustieren. Gespeichert als Achse 0–180° (eine Strasse hat zwei Richtungen).
   Ohne Achse ist F6 nicht möglich.
 - **F3** Spots bearbeiten, löschen, als Liste und auf der Karte anzeigen.
-- **F3a** Minimale sichtbare Sonnenhöhe pro Spot in Grad (Gebäudeschatten, Default 0°).
-  Darunter gilt die Sonne am Spot als verdeckt. Ersetzt die freie Notiz, damit der Score es verwerten kann.
+- **F3a** Minimale sichtbare Sonnenhöhe pro Spot in Grad (Default 0°). Darunter gilt die Sonne am Spot als
+  verdeckt. Mit berechnetem Horizont (F3b) nur noch manuelle Untergrenze.
+- **F3b** Horizont pro Spot aus swissSURFACE3D berechnen (Knopf im Formular): Hinderniswinkel je 1°
+  Himmelsrichtung bis 300 m. Die Sonne gilt nur als sichtbar, wenn sie über dem Horizont in ihrer Richtung
+  steht. Anzeige als Silhouette mit Sonnenbahn im Licht-Detail. Details §11 Stufe 2.
 
 ### Licht
 - **F4** Golden Hour (Sonnenhöhe −4° bis +6°) und Blue Hour (−6° bis −4°) pro Tag und Spot, morgens und abends.
@@ -77,6 +80,7 @@ Werte stehen in `src/lib/score.ts` (`SCORE_RULES`) und sind bis zur Kalibrierung
 | Gold mit hohen Wolken 30–70 % und tiefen < 30 % («Chance auf Abend-/Morgenrot») | +10 |
 | Keine Prognose für die Fenstermitte («ohne Wetter») | 0 |
 | Nasse Strasse zur Fenstermitte (F8), Blau / übrige | +20 / +15 |
+| Gold, Sonne über 0° aber hinter dem Horizontprofil (F3b) – ersetzt die Wetterregel | −20 |
 
 Ampel: grün ≥ 70, gelb 45–69, rot < 45. «Nächstes gutes Fenster» (F13) = frühestes grünes Fenster;
 überlappt ein besseres grünes Fenster, gewinnt dieses.
@@ -98,7 +102,8 @@ ist das weniger wahrscheinlich, aber N4 bleibt Pflicht.
 
 Gespeichert in IndexedDB. Schemaänderungen nur mit Migration (Versionsnummer der DB erhöhen).
 
-- `spots`: `id` (UUID, stabil), `name`, `note`, `lat`, `lon`, `axisDeg` (0–180 oder leer), `minSunAltDeg`, `createdAt`, `updatedAt`
+- `spots`: `id` (UUID, stabil), `name`, `note`, `lat`, `lon`, `axisDeg` (0–180 oder leer), `minSunAltDeg`,
+  `horizon` (optional: `deg[360]`, `groundM`, `source`, `computedAt`; ältere Spots ohne Feld), `createdAt`, `updatedAt`
 - `hits`: `id`, `spotId`, `time` (ISO), `rating` (`good` | `bad`), `inputs` (Sonnenstand, Wetterstunde,
   aktive Fenster mit Score, bester Score, Licht-Einstellungen zum Zeitpunkt)
 - `settings`: Toleranzen, Maximalhöhe, Gewichtungen
@@ -115,13 +120,14 @@ Gespeichert in IndexedDB. Schemaänderungen nur mit Migration (Versionsnummer de
 | Wetter | Open-Meteo Forecast-API, stündlich | Ohne Key; nicht-kommerziell; CC BY 4.0 |
 | Karte | Leaflet, swisstopo-WMTS (Standard), OSM als Fallback | Attribution Pflicht |
 | Speicher | IndexedDB (Wrapper `idb`) | Pro Gerät getrennt |
+| Höhendaten | `geotiff.js`, erst bei «Horizont berechnen» nachgeladen, nicht vorab gecacht | swissSURFACE3D (COG, LZW) |
 | Cache | Letzte Prognose in IndexedDB (offline lesbar); Service Worker nur für die App-Dateien | Siehe §9 |
 | Deploy | GitHub Actions → GitHub Pages | Push auf `main` deployt |
 
 ## 6. Erlaubte Netzwerkziele zur Laufzeit
 
 Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.openstreetmap.org`,
-`data.geo.admin.ch` (nur der 3D-Daten-Test in den Einstellungen, auf Knopfdruck; siehe §11).
+`data.geo.admin.ch` (Höhendaten swissSURFACE3D, nur auf Knopfdruck: 3D-Test, Horizont berechnen; siehe §11).
 
 ## 7. Priorisierung
 
@@ -213,9 +219,15 @@ am ersten Spot (sonst Bern), lädt per Range-Request höchstens 64 KB und liest 
 Mini-Parser, keine Abhängigkeit). Zeigt Erreichbarkeit/CORS, Teilabruf, Kachelung, Auflösung und EPSG.
 Ergebnis auf dem iPhone entscheidet über Stufe 2.
 
-### Stufe 2: Horizont pro Spot (geplant, falls Stufe 1 ✅)
-Ausschnitt ~300 m um den Spot aus dem Oberflächenmodell, Horizontprofil alle 2° ab 1,6 m über Boden
-(Boden = tiefster Wert im 3-m-Umkreis), Sonne nur sichtbar über dem Horizont in ihrer Richtung; ersetzt
-das Pauschalfeld F3a (bleibt als manuelle Korrektur). Benötigt `geotiff.js` (Stack-Erweiterung) und
-geklärte Lizenz. Bekannte Grenze: Bäume im Modell, im Winter ohne Laub zu hoch.
+Ergebnis iPhone 2026-10-16: ✅ (Katalog HTTP 200, Range 206, COG 512er-Kacheln, LZW, 0,5 m, EPSG 2056).
+
+### Stufe 2: Horizont pro Spot (umgesetzt 2026-10-16, F3b)
+- Spot → LV95 (swisstopo-Näherungsformeln). STAC-Suche im 300-m-Umkreis, pro 1-km-Kachel die neueste.
+- Zwei Raster: 0,5 m bis 60 m, 2 m bis 300 m (geotiff.js wählt die passende Overview; Block- und
+  Kachel-Cache, Fernbereich zuerst). Boden = tiefster Wert im 3-m-Umkreis, Auge = Boden + 1,6 m.
+- Hinderniswinkel je 1° wahre Himmelsrichtung (Meridiankonvergenz berücksichtigt), gespeichert am Spot,
+  im Backup enthalten; nach «Position neu setzen» verworfen.
+- Grenzen: keine fernen Hügel (> 300 m); Bäume zählen ganzjährig; Pin auf einem Dach verfälscht den Boden.
+- Lizenz: swisstopo-OGD mit Quellenangabe angenommen (STAC-Metadaten nennen «proprietary»); Bestätigung
+  bei swisstopo angefragt durch den Nutzer.
 
