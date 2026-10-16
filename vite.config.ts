@@ -1,9 +1,15 @@
 import { defineConfig } from 'vitest/config';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// Avoids pulling in @types/node for a single env lookup.
+declare const process: { env: Record<string, string | undefined> };
+
 // Relative base so the build works under https://huwy7.github.io/Shot-Planer/ regardless of path casing.
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify((process.env.GITHUB_SHA ?? 'dev').slice(0, 7)),
+  },
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
