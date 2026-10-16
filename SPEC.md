@@ -51,7 +51,8 @@ Kern ist ein Score pro Spot und Zeitfenster, der Licht- und Wetterkriterien komb
 - **F10** Aktiver Regen und Wind als eigene Kategorie (kein Malus, sondern Motiv).
 
 ### Bewertung und Ansicht
-- **F11** Score 0–100 pro Spot und Stunde für die nächsten 3–5 Tage (Reichweite der Wetterprognose).
+- **F11** Score 0–100 pro Spot und **Lichtfenster** für die nächsten 5 Tage. Ein Stundenwert wird daraus
+  abgeleitet (bestes Fenster, das die Stunde berührt), aber nicht separat angezeigt.
 - **F12** Pro Spot die 3 besten Zeitfenster mit Ampel und Begründung
   (z. B. "Abendlicht entlang Gasse, aufgelockert"). Begründungen nennen nur Kriterien der aktiven Stufe.
 - **F13** Übersicht: alle Spots, sortiert nach nächstem guten Fenster.
@@ -60,8 +61,21 @@ Kern ist ein Score pro Spot und Zeitfenster, der Licht- und Wetterkriterien komb
   Score-Eingaben gespeichert. Grundlage für die spätere Kalibrierung der Score-Regeln.
 
 ### Score-Logik
-Ein Satz einfacher, sichtbarer Regeln statt Blackbox. Jede Regel liefert Teilpunkte und einen Begründungstext.
-Die Regeln werden in M4 festgelegt und hier dokumentiert.
+Ein Satz einfacher, sichtbarer Regeln statt Blackbox. Jede Regel liefert Teilpunkte und einen Begründungstext;
+die Summe wird auf 0–100 begrenzt. Das Wetter wird zur Fenstermitte bewertet (Klassen aus F7).
+Werte stehen in `src/lib/score.ts` (`SCORE_RULES`) und sind bis zur Kalibrierung mit F15 Annahmen.
+
+| Regel | Punkte |
+| --- | --- |
+| Grundwert Entlang / Quer / Gold / Blau | 50 / 35 / 35 / 25 |
+| Entlang/Quer reicht in die Golden Hour (tiefste Sonnenhöhe ≤ 6°) | +15 |
+| Entlang/Quer/Gold: Wetter hart / wechselnd / weich | +35 / +10 / −30 |
+| Blau: Wetter hart / wechselnd / weich | +20 / +20 / +5 |
+| Gold mit hohen Wolken 30–70 % und tiefen < 30 % («Chance auf Abend-/Morgenrot») | +10 |
+| Keine Prognose für die Fenstermitte («ohne Wetter») | 0 |
+
+Ampel: grün ≥ 70, gelb 45–69, rot < 45. «Nächstes gutes Fenster» (F13) = frühestes grünes Fenster;
+überlappt ein besseres grünes Fenster, gewinnt dieses.
 
 ## 3. Nicht-funktionale Anforderungen
 
@@ -81,7 +95,8 @@ ist das weniger wahrscheinlich, aber N4 bleibt Pflicht.
 Gespeichert in IndexedDB. Schemaänderungen nur mit Migration (Versionsnummer der DB erhöhen).
 
 - `spots`: `id` (UUID, stabil), `name`, `note`, `lat`, `lon`, `axisDeg` (0–180 oder leer), `minSunAltDeg`, `createdAt`, `updatedAt`
-- `hits`: `id`, `spotId`, `time` (ISO), `rating` (`good` | `bad`), `inputs` (Score-Eingaben zum Zeitpunkt)
+- `hits`: `id`, `spotId`, `time` (ISO), `rating` (`good` | `bad`), `inputs` (Sonnenstand, Wetterstunde,
+  aktive Fenster mit Score, bester Score, Licht-Einstellungen zum Zeitpunkt)
 - `settings`: Toleranzen, Maximalhöhe, Gewichtungen
 - `weatherCache`: Prognose je Koordinatensatz mit Abrufzeit
 
@@ -120,7 +135,7 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
 | M1 | Spots: Karte, Pin, Achse ziehen, Liste, IndexedDB, Export/Import (F1–F3a, N4, N7) | erledigt |
 | M2 | Licht: Golden/Blue Hour, Höhe/Schatten, Achsen-Fenster (F4–F6) | erledigt |
 | M3 | Wetter: Open-Meteo, Bewölkungsklassen, Cache (F7, N3) | erledigt |
-| M4 | Score und Ansichten (F11–F13, F15) | offen |
+| M4 | Score und Ansichten (F11–F13, F15) | erledigt |
 | v1.1 | F8, F10 | offen |
 | v1.2 | F9, F14 | offen |
 
@@ -151,6 +166,13 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
   ausserhalb der bisherigen Raster liegt; manuell über «Jetzt aktualisieren». Bei Fehlern bleibt die alte
   Prognose sichtbar, mit Stand und Fehlermeldung.
 
+- 2026-10-16 (M4): Score pro Lichtfenster statt pro Stunde (F11), Regeln siehe §2. Licht-Detail zeigt oben
+  die 3 besten kommenden Fenster (F12), jedes Fenster mit Ampel, Score und Begründung. Liste standardmässig
+  nach nächstem grünem Fenster sortiert, umschaltbar A–Z (F13).
+- 2026-10-16 (M4): Treffer (F15) per «War gut / War schlecht» für den aktuellen Moment im Licht-Detail.
+  Backup-Format v2 enthält Spots und Treffer; v1-Dateien bleiben importierbar. Treffer sind unveränderlich,
+  Import fügt nur unbekannte IDs zu bestehenden Spots hinzu.
+
 ## 10. Offene Punkte
 
-- Score-Regeln konkret (M4).
+- Kalibrierung der Score-Regeln und Bewölkungsschwellen nach 10–20 Treffern.
