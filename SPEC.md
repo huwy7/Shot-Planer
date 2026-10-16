@@ -35,6 +35,11 @@ Kern ist ein Score pro Spot und Zeitfenster, der Licht- und Wetterkriterien komb
 - **F3b** Horizont pro Spot aus swissSURFACE3D berechnen (Knopf im Formular): Hinderniswinkel je 1°
   Himmelsrichtung bis 300 m. Die Sonne gilt nur als sichtbar, wenn sie über dem Horizont in ihrer Richtung
   steht. Anzeige als Silhouette mit Sonnenbahn im Licht-Detail. Details §11 Stufe 2.
+- **F3c** Achse aus dem Horizont: Richtungspaar (a, a+180) mit dem tiefsten Horizont (Mittel ±5°), Mitte eines
+  Plateaus; nur bei klarer Gasse (Kontrast ≥ 8° zum Median). Fehlt die Achse, wird sie gesetzt und als
+  «aus dem Horizont erkannt» markiert; sonst als Vorschlag-Knopf angeboten.
+- **F3d** Sichtbereich auf der Karte: Umriss um den Spot, lang in offene, kurz in verbaute Richtungen
+  (80 m bei 0°, 3 m ab 45°). Dient der Kontrolle des Horizonts am Kartenbild.
 
 ### Licht
 - **F4** Golden Hour (Sonnenhöhe −4° bis +6°) und Blue Hour (−6° bis −4°) pro Tag und Spot, morgens und abends.
