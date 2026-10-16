@@ -35,6 +35,13 @@ export function bearing(lat1: number, lon1: number, lat2: number, lon2: number):
   return normalizeDeg(toDeg(Math.atan2(y, x)));
 }
 
+const COMPASS_POINTS = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'] as const;
+
+/** German 8-point compass label for a direction, e.g. 100° → "O". */
+export function compassLabel(deg: number): (typeof COMPASS_POINTS)[number] {
+  return COMPASS_POINTS[Math.round(normalizeDeg(deg) / 45) % 8];
+}
+
 const EARTH_RADIUS_M = 6371008.8;
 
 /** Point reached from a start point after `distanceM` along `bearingDeg` on a sphere. */
@@ -47,9 +54,4 @@ export function destination(lat: number, lon: number, bearingDeg: number, distan
   const lambda2 =
     lambda1 + Math.atan2(Math.sin(theta) * Math.sin(delta) * Math.cos(phi1), Math.cos(delta) - Math.sin(phi1) * Math.sin(phi2));
   return [toDeg(phi2), toDeg(lambda2)];
-}
-
-/** Converts a SunCalc azimuth (radians, from south, westward positive) to degrees from north, clockwise. */
-export function sunCalcAzimuthToDeg(azimuthRad: number): number {
-  return normalizeDeg(toDeg(azimuthRad) + 180);
 }

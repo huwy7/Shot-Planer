@@ -24,7 +24,7 @@
 
 ## Konventionen
 - Code, Bezeichner und Kommentare auf Englisch. UI-Texte auf Deutsch.
-- Winkel in Grad, Azimut ab Nord im Uhrzeigersinn (0° = N, 90° = O). SunCalc-Werte (Radiant, ab Süd) sofort umrechnen.
+- Winkel in Grad, Azimut ab Nord im Uhrzeigersinn (0° = N, 90° = O). SunCalc 2.x liefert bereits diese Konvention (nicht 1.x verwenden).
 - Mobile-first für iPhone Safari: Touch-Ziele ≥ 44 px, Bedienung im Daumenbereich unten, Dark Mode, Safe Areas.
 - Struktur:
   - `src/lib/` – reine Logik (Geometrie, Licht, Score), testbar ohne DOM

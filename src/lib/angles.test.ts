@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { angularDiff, axisDiff, bearing, destination, normalizeAxis, normalizeDeg, sunCalcAzimuthToDeg } from './angles';
+import { angularDiff, axisDiff, bearing, compassLabel, destination, normalizeAxis, normalizeDeg } from './angles';
+
+describe('compassLabel', () => {
+  it('maps to the nearest of 8 points', () => {
+    expect(compassLabel(0)).toBe('N');
+    expect(compassLabel(22)).toBe('N');
+    expect(compassLabel(23)).toBe('NO');
+    expect(compassLabel(100)).toBe('O');
+    expect(compassLabel(225)).toBe('SW');
+    expect(compassLabel(350)).toBe('N');
+    expect(compassLabel(-90)).toBe('W');
+  });
+});
 
 describe('destination', () => {
   it('moves north by about 111 m per 0.001° latitude', () => {
@@ -58,14 +70,5 @@ describe('bearing', () => {
     expect(bearing(47.0, 7.4, 46.9, 7.4)).toBeCloseTo(180, 6);
     expect(bearing(46.9, 7.4, 46.9, 7.5)).toBeCloseTo(90, 0);
     expect(bearing(46.9, 7.5, 46.9, 7.4)).toBeCloseTo(270, 0);
-  });
-});
-
-describe('sunCalcAzimuthToDeg', () => {
-  it('maps SunCalc south-based radians to north-based degrees', () => {
-    expect(sunCalcAzimuthToDeg(0)).toBe(180); // south
-    expect(sunCalcAzimuthToDeg(Math.PI / 2)).toBeCloseTo(270, 9); // west
-    expect(sunCalcAzimuthToDeg(-Math.PI / 2)).toBeCloseTo(90, 9); // east
-    expect(sunCalcAzimuthToDeg(Math.PI)).toBeCloseTo(0, 9); // north
   });
 });
