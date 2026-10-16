@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeHorizon, emptyGrid, groundHeight, horizonAt, parseHorizon, sampleGrid, type HeightGrid } from './horizon';
+import { computeHorizon, emptyGrid, groundHeight, horizonAt, parseHorizon, sampleGrid, suggestAxis, visibilityOutline, type HeightGrid } from './horizon';
 import { wgs84ToLv95 } from './lv95';
 
 const NOW = new Date('2026-10-16T10:00:00Z');
@@ -81,5 +81,37 @@ describe('horizonAt / parseHorizon', () => {
     expect(parseHorizon({ ...ok, deg: [...deg.slice(1), 'x'] })).toBeNull();
     expect(parseHorizon({ ...ok, computedAt: 'nie' })).toBeNull();
     expect(parseHorizon(null)).toBeNull();
+  });
+});
+
+describe('suggestAxis', () => {
+  /** Buildings 40° everywhere except a street corridor ±8° around `axis` and `axis + 180`. */
+  const dist = (a: number, b: number) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
+  const street = (axis: number) =>
+    Array.from({ length: 360 }, (_, az) => (dist(az, axis) <= 8 || dist(az, axis + 180) <= 8 ? 4 : 40));
+
+  it('finds the corridor of a street', () => {
+    expect(suggestAxis({ deg: street(30) })?.axisDeg).toBe(30);
+    expect(suggestAxis({ deg: street(165) })?.axisDeg).toBe(165);
+  });
+
+  it('handles the wrap at north', () => {
+    expect(suggestAxis({ deg: street(2) })?.axisDeg).toBe(2);
+    expect(suggestAxis({ deg: street(178) })?.axisDeg).toBe(178);
+  });
+
+  it('returns null on an open square', () => {
+    expect(suggestAxis({ deg: Array.from({ length: 360 }, () => 3) })).toBeNull();
+  });
+});
+
+describe('visibilityOutline', () => {
+  it('reaches far in open and short in blocked directions', () => {
+    const deg = Array.from({ length: 360 }, (_, az) => (az === 90 ? 45 : 0));
+    const pts = visibilityOutline({ deg }, LAT, LON, 80);
+    expect(pts).toHaveLength(72);
+    const dist = ([la, lo]: [number, number]) => Math.hypot((la - LAT) * 111320, (lo - LON) * 111320 * Math.cos((LAT * Math.PI) / 180));
+    expect(dist(pts[0])).toBeCloseTo(80, 0);
+    expect(dist(pts[18])).toBeCloseTo(3, 0);
   });
 });

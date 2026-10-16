@@ -136,3 +136,62 @@ export function parseHorizon(raw: unknown): HorizonProfile | null {
   if (typeof r.computedAt !== 'string' || Number.isNaN(Date.parse(r.computedAt))) return null;
   return { deg: [...(r.deg as number[])], groundM: r.groundM, source: r.source, computedAt: r.computedAt };
 }
+
+export interface AxisSuggestion {
+  /** Street axis in [0, 180). */
+  axisDeg: number;
+  /** Mean obstruction along the axis (both directions), degrees. */
+  openDeg: number;
+  /** How much more obstructed the typical direction is than the axis, degrees. */
+  contrastDeg: number;
+}
+
+/** Minimum contrast for a corridor to count as a street; below that the spot is open all round. */
+export const MIN_AXIS_CONTRAST_DEG = 8;
+const AXIS_HALF_WIDTH_DEG = 5;
+
+/**
+ * Suggests the street axis as the direction pair (a, a+180) with the lowest obstruction:
+ * a street is a corridor that is open at both ends. Returns null without a clear corridor.
+ */
+export function suggestAxis(profile: Pick<HorizonProfile, 'deg'>): AxisSuggestion | null {
+  const h = (az: number) => Math.max(0, profile.deg[((az % 360) + 360) % 360]);
+  const mean = (center: number) => {
+    let sum = 0;
+    for (let d = -AXIS_HALF_WIDTH_DEG; d <= AXIS_HALF_WIDTH_DEG; d++) sum += h(center + d);
+    return sum / (2 * AXIS_HALF_WIDTH_DEG + 1);
+  };
+  const costs: number[] = [];
+  for (let a = 0; a < 180; a++) costs.push((mean(a) + mean(a + 180)) / 2);
+  let best = 0;
+  for (let a = 1; a < 180; a++) if (costs[a] < costs[best]) best = a;
+  // A corridor wider than the window gives a plateau of equal minima: take its centre (circular over 180°).
+  const tol = 0.05;
+  let lo = 0;
+  while (lo < 179 && costs[(best - lo - 1 + 180) % 180] <= costs[best] + tol) lo++;
+  let hi = 0;
+  while (hi < 179 && costs[(best + hi + 1) % 180] <= costs[best] + tol) hi++;
+  best = (((best + Math.round((hi - lo) / 2)) % 180) + 180) % 180;
+  const median = [...costs].sort((x, y) => x - y)[90];
+  const contrast = median - costs[best];
+  if (contrast < MIN_AXIS_CONTRAST_DEG) return null;
+  return { axisDeg: best, openDeg: Math.round(costs[best] * 10) / 10, contrastDeg: Math.round(contrast * 10) / 10 };
+}
+
+/**
+ * Outline of the open sky around the spot for the map: long where the horizon is low, short where
+ * buildings block it. Returns [lat, lon] points, one per 5°.
+ */
+export function visibilityOutline(
+  profile: Pick<HorizonProfile, 'deg'>,
+  lat: number,
+  lon: number,
+  maxM = 80,
+): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let az = 0; az < 360; az += 5) {
+    const block = Math.min(45, Math.max(0, profile.deg[az])) / 45;
+    pts.push(destination(lat, lon, az, Math.max(3, maxM * (1 - block))));
+  }
+  return pts;
+}
