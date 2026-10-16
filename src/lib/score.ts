@@ -2,7 +2,7 @@
 
 import { computeDayLight, GOLDEN_HOUR, localDay, type DayLight, type LightSettings, type LightWindow } from './light';
 import type { SunFn } from './sun';
-import { classifyClouds, weatherAt, type HourWeather } from './weather';
+import { classifyClouds, motifWindows, weatherAt, wetStreetAt, type HourWeather, type MotifWindow } from './weather';
 
 export type Ampel = 'green' | 'yellow' | 'red';
 
@@ -16,6 +16,8 @@ export const SCORE_RULES = {
   afterglow: 10,
   afterglowHigh: { min: 30, max: 70 },
   afterglowMaxLow: 30,
+  /** F8: wet street, dry from above. Blue hour gets more because city lights reflect best then. */
+  wetStreet: { default: 15, blue: 20 },
 } as const;
 
 export interface ScoreReason {
@@ -38,7 +40,7 @@ export function ampelFor(score: number): Ampel {
   return 'red';
 }
 
-export function scoreWindow(w: LightWindow, weather: HourWeather | null): ScoredWindow {
+export function scoreWindow(w: LightWindow, weather: HourWeather | null, wetStreet = false): ScoredWindow {
   const r = SCORE_RULES;
   const reasons: ScoreReason[] = [];
   const baseText = {
@@ -70,6 +72,10 @@ export function scoreWindow(w: LightWindow, weather: HourWeather | null): Scored
     }
   }
 
+  if (wetStreet) {
+    reasons.push({ points: w.kind === 'blue' ? r.wetStreet.blue : r.wetStreet.default, text: 'nasse Strasse, Spiegelungen' });
+  }
+
   const score = Math.max(0, Math.min(100, reasons.reduce((sum, x) => sum + x.points, 0)));
   return { window: w, score, ampel: ampelFor(score), reasons, weather };
 }
@@ -82,7 +88,12 @@ export interface ScoredDay {
   dayIndex: number;
   day: DayLight;
   scored: ScoredWindow[];
+  /** F10 rain/wind windows of this day; not part of the score. */
+  motifs: MotifWindow[];
 }
+
+/** Precipitation forecasts beyond tomorrow are rough; the UI marks them as uncertain. */
+export const RELIABLE_PRECIP_DAYS = 2;
 
 export interface SpotPlan {
   days: ScoredDay[];
@@ -100,8 +111,11 @@ export function planSpot(
   const result: ScoredDay[] = [];
   for (let i = 0; i < days; i++) {
     const day = computeDayLight(sun, localDay(now, i), geom, settings);
-    const scored = day.windows.map((w) => scoreWindow(w, weatherAt(hours, windowMid(w))));
-    result.push({ dayIndex: i, day, scored });
+    const scored = day.windows.map((w) => scoreWindow(w, weatherAt(hours, windowMid(w)), wetStreetAt(hours, windowMid(w))));
+    // Values cover the preceding hour, so the day's hours are those stamped in (dayStart, dayEnd].
+    const dayHours = (hours ?? []).filter((h) => h.time > day.dayStart.getTime() && h.time <= day.dayEnd.getTime());
+    const motifs = motifWindows(dayHours);
+    result.push({ dayIndex: i, day, scored, motifs });
   }
   return { days: result };
 }

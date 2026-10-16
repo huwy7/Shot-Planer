@@ -11,7 +11,7 @@ function win(kind: WindowKind, startH: number, endH: number, alt: [number, numbe
 }
 
 function wx(low: number, mid: number, high: number): HourWeather {
-  return { time: 0, cloudCover: null, cloudLow: low, cloudMid: mid, cloudHigh: high, precipitation: 0, visibility: 20000, humidity: 70 };
+  return { time: 0, cloudCover: null, cloudLow: low, cloudMid: mid, cloudHigh: high, precipitation: 0, visibility: 20000, humidity: 70, windGusts: 10 };
 }
 
 const HARD = wx(5, 5, 10);
@@ -67,6 +67,12 @@ describe('scoreWindow', () => {
     expect(scoreWindow(win('along', 9, 10, [8, 15]), { ...HARD, cloudLow: null }).score).toBe(50);
   });
 
+  it('adds the wet-street bonus, more for blue hour', () => {
+    expect(scoreWindow(win('along', 9, 10, [8, 15]), MIXED, true).reasons.at(-1)).toEqual({ points: 15, text: 'nasse Strasse, Spiegelungen' });
+    expect(scoreWindow(win('blue', 6, 7, [-6, -4]), SOFT, true).score).toBe(50);
+    expect(scoreWindow(win('along', 7, 8, [0, 12]), HARD, true).score).toBe(100);
+  });
+
   it('never leaves 0..100', () => {
     expect(scoreWindow(win('blue', 6, 7), null).score).toBeGreaterThanOrEqual(0);
   });
@@ -76,6 +82,7 @@ const day = (scored: ReturnType<typeof scoreWindow>[], dayIndex = 0): ScoredDay 
   dayIndex,
   day: { dayStart: at(0), dayEnd: at(24), samples: [], maxAltitude: { time: at(12), altitudeDeg: 30 }, windows: scored.map((s) => s.window) },
   scored,
+  motifs: [],
 });
 
 describe('ranking', () => {
@@ -132,5 +139,21 @@ describe('planSpot', () => {
     expect(plan.days).toHaveLength(2);
     expect(plan.days[0].scored.length).toBe(plan.days[0].day.windows.length);
     expect(plan.days[0].scored.every((s) => s.reasons.some((r) => r.text === 'ohne Wetter'))).toBe(true);
+    expect(plan.days[0].motifs).toEqual([]);
+  });
+});
+
+describe('planSpot motifs', () => {
+  it('assigns rain to the local day it falls in, not the next one', () => {
+    const sun: SunFn = () => ({ azimuthDeg: 0, altitudeDeg: -30 });
+    const now = new Date(2026, 9, 16, 12);
+    const midnight = new Date(2026, 9, 17).getTime();
+    const H = 3600 * 1000;
+    // Rain stamped at 23:00 and 00:00 covers 22–23 and 23–24 on the 16th; 01:00 covers 00–01 on the 17th.
+    const hours: HourWeather[] = [-1, 0, 1].map((k) => ({ ...HARD, time: midnight + k * H, precipitation: 2 }));
+    const plan = planSpot(sun, { axisDeg: null, minSunAltDeg: 0 }, DEFAULT_LIGHT_SETTINGS, hours, now, 2);
+    const span = (d: number) => plan.days[d].motifs.filter((m) => m.kind === 'rain').map((m) => [(m.start.getTime() - midnight) / H, (m.end.getTime() - midnight) / H]);
+    expect(span(0)).toEqual([[-2, 0]]);
+    expect(span(1)).toEqual([[0, 1]]);
   });
 });

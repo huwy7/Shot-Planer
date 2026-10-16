@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FORECAST_FORMAT,
+  isWetStreet,
+  motifWindows,
+  wetStreetAt,
   buildForecastUrl,
   classifyClouds,
   describeClouds,
@@ -31,6 +35,7 @@ function apiLocation(hours: number, patch: Record<string, unknown[]> = {}) {
       precipitation: fill(0),
       visibility: fill(24000),
       relative_humidity_2m: fill(70),
+      wind_gusts_10m: fill(20),
       ...patch,
     },
   };
@@ -45,6 +50,7 @@ const hour = (low: number | null, mid: number | null, high: number | null): Hour
   precipitation: null,
   visibility: null,
   humidity: null,
+  windGusts: null,
 });
 
 describe('locations and URL', () => {
@@ -137,6 +143,7 @@ describe('needsRefresh', () => {
   const locs = uniqueLocations([{ lat: 46.948, lon: 7.447 }]);
   const now = new Date('2026-10-16T10:00:00Z');
   const forecast = (fetchedAt: string, keys = locs.map((l) => l.key)): Forecast => ({
+    format: FORECAST_FORMAT,
     fetchedAt,
     locations: Object.fromEntries(keys.map((k) => [k, []])),
   });
@@ -152,5 +159,50 @@ describe('needsRefresh', () => {
   });
   it('is false for a fresh, complete forecast', () => {
     expect(needsRefresh(forecast('2026-10-16T09:30:00Z'), locs, now)).toBe(false);
+  });
+  it('is true for a fresh forecast in an older format', () => {
+    const { format: _format, ...old } = forecast('2026-10-16T09:30:00Z');
+    expect(needsRefresh(old, locs, now)).toBe(true);
+  });
+});
+
+const H = 3600 * 1000;
+const series = (precip: (number | null)[], gusts: (number | null)[] = []): HourWeather[] =>
+  precip.map((p, i) => ({ ...hour(10, 10, 10), time: i * H, precipitation: p, windGusts: gusts[i] ?? null }));
+
+describe('isWetStreet (F8)', () => {
+  it('needs ≥ 0.3 mm in the 3 hours before and < 0.1 mm now', () => {
+    const hs = series([0.1, 0.1, 0.1, 0, 0.05, 0.1]);
+    expect(isWetStreet(hs, 3)).toBe(true);
+    expect(isWetStreet(hs, 4)).toBe(false); // 0.1 + 0.1 + 0 = 0.2
+    expect(isWetStreet(hs, 5)).toBe(false); // raining 0.1 now
+  });
+  it('is false at the start of the forecast, with gaps or missing values', () => {
+    expect(isWetStreet(series([1, 1, 0]), 2)).toBe(false);
+    const gap = series([1, 1, 1, 0]);
+    gap[0] = { ...gap[0], time: -5 * H };
+    expect(isWetStreet(gap, 3)).toBe(false);
+    expect(isWetStreet(series([1, null, 1, 0]), 3)).toBe(false);
+  });
+  it('looks up the nearest hour', () => {
+    const hs = series([0.2, 0.2, 0.2, 0]);
+    expect(wetStreetAt(hs, new Date(3 * H - 20 * 60 * 1000))).toBe(true);
+    expect(wetStreetAt(hs, new Date(1 * H))).toBe(false);
+    expect(wetStreetAt(undefined, new Date())).toBe(false);
+  });
+});
+
+describe('motifWindows (F10)', () => {
+  it('merges consecutive rainy and windy hours, covering the preceding hour', () => {
+    const hs = series([0, 0.6, 1.8, 0.2, 0.7], [10, 45, 55, 30, 20]);
+    const m = motifWindows(hs);
+    expect(m.map((x) => [x.kind, x.start.getTime() / H, x.end.getTime() / H, x.peak])).toEqual([
+      ['rain', 0, 2, 1.8],
+      ['wind', 0, 2, 55],
+      ['rain', 3, 4, 0.7],
+    ]);
+  });
+  it('ignores missing values', () => {
+    expect(motifWindows(series([null, null], [null, null]))).toEqual([]);
   });
 });

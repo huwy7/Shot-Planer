@@ -1,12 +1,14 @@
 // Open-Meteo forecast: request building, untrusted-response parsing, cloud classification, cache freshness.
 
 export const FORECAST_DAYS = 5;
+/** Bump when HOURLY_VARS change so cached forecasts without the new fields are refetched. */
+export const FORECAST_FORMAT = 2;
 export const MAX_FORECAST_AGE_MS = 60 * 60 * 1000; // SPEC N3
 const HOUR_MS = 3600 * 1000;
 /** A forecast hour is used for times at most this far away. */
 const MAX_HOUR_DISTANCE_MS = 90 * 60 * 1000;
 
-/** Hourly variables; precipitation, visibility and humidity are kept for v1.1/v1.2 (F8, F9). */
+/** Hourly variables; visibility and humidity are kept for v1.2 (F9). */
 export const HOURLY_VARS = [
   'cloud_cover',
   'cloud_cover_low',
@@ -15,10 +17,11 @@ export const HOURLY_VARS = [
   'precipitation',
   'visibility',
   'relative_humidity_2m',
+  'wind_gusts_10m',
 ] as const;
 
 export interface HourWeather {
-  /** Start of the hour, ms since epoch (UTC). */
+  /** Forecast timestamp, ms since epoch (UTC). Sums and maxima cover the preceding hour. */
   time: number;
   cloudCover: number | null;
   cloudLow: number | null;
@@ -30,9 +33,13 @@ export interface HourWeather {
   visibility: number | null;
   /** Percent. */
   humidity: number | null;
+  /** km/h, maximum in the preceding hour. */
+  windGusts: number | null;
 }
 
 export interface Forecast {
+  /** FORECAST_FORMAT at fetch time; missing on forecasts from before v1.1. */
+  format?: number;
   fetchedAt: string;
   /** Hours per location key (see `locationKey`). */
   locations: Record<string, HourWeather[]>;
@@ -82,7 +89,7 @@ function parseLocation(raw: unknown): HourWeather[] {
   const h = hourly as Record<string, unknown>;
   if (!Array.isArray(h.time)) throw new WeatherError('Wetterdaten ohne Zeitachse.');
   const col = (name: string): unknown[] => (Array.isArray(h[name]) ? (h[name] as unknown[]) : []);
-  const [cover, low, mid, high, precip, vis, hum] = HOURLY_VARS.map(col);
+  const [cover, low, mid, high, precip, vis, hum, gusts] = HOURLY_VARS.map(col);
 
   const hours: HourWeather[] = [];
   h.time.forEach((t, i) => {
@@ -96,6 +103,7 @@ function parseLocation(raw: unknown): HourWeather[] {
       precipitation: inRange(precip[i], 0, 500),
       visibility: inRange(vis[i], 0, 1_000_000),
       humidity: inRange(hum[i], 0, 100),
+      windGusts: inRange(gusts[i], 0, 400),
     });
   });
   return hours.sort((a, b) => a.time - b.time);
@@ -158,6 +166,7 @@ export function hoursBetween(hours: readonly HourWeather[] | undefined, start: D
 export function needsRefresh(forecast: Forecast | null, locations: readonly WeatherLocation[], now: Date): boolean {
   if (locations.length === 0) return false;
   if (!forecast) return true;
+  if (forecast.format !== FORECAST_FORMAT) return true;
   const age = now.getTime() - Date.parse(forecast.fetchedAt);
   if (!(age >= 0 && age < MAX_FORECAST_AGE_MS)) return true;
   return locations.some((l) => !(l.key in forecast.locations));
@@ -167,4 +176,76 @@ export function describeClouds(h: HourWeather): string {
   const cls = classifyClouds(h);
   const pct = (v: number | null) => (v === null ? '–' : String(Math.round(v)));
   return `${cls ? CLOUD_LABEL[cls] : 'unbekannt'} · Wolken T/M/H ${pct(h.cloudLow)}/${pct(h.cloudMid)}/${pct(h.cloudHigh)} %`;
+}
+
+// --- F8 wet streets, F10 weather motifs ---
+
+export const WET_RULE = { pastHours: 3, pastMinMm: 0.3, dryMaxMm: 0.1 } as const;
+export const MOTIF_RULE = { rainMinMmPerHour: 0.5, gustMinKmh: 40 } as const;
+
+function nearestIndex(hours: readonly HourWeather[], t: number): number {
+  let best = -1;
+  for (let i = 0; i < hours.length; i++) if (best < 0 || Math.abs(hours[i].time - t) < Math.abs(hours[best].time - t)) best = i;
+  return best >= 0 && Math.abs(hours[best].time - t) <= MAX_HOUR_DISTANCE_MS ? best : -1;
+}
+
+/**
+ * F8: the street is wet but it is dry from above — at least 0.3 mm in the 3 hours before and
+ * under 0.1 mm in the hour itself. Hours must be consecutive and complete; `hours` sorted by time.
+ */
+export function isWetStreet(hours: readonly HourWeather[], index: number): boolean {
+  const now = hours[index];
+  if (!now || now.precipitation === null || now.precipitation >= WET_RULE.dryMaxMm) return false;
+  let sum = 0;
+  for (let k = 1; k <= WET_RULE.pastHours; k++) {
+    const h = hours[index - k];
+    if (!h || h.precipitation === null || now.time - h.time !== k * HOUR_MS) return false;
+    sum += h.precipitation;
+  }
+  // Tolerance against float sums like 0.1 + 0.1 + 0.1.
+  return sum >= WET_RULE.pastMinMm - 1e-9;
+}
+
+export function wetStreetAt(hours: readonly HourWeather[] | undefined, time: Date): boolean {
+  if (!hours) return false;
+  const i = nearestIndex(hours, time.getTime());
+  return i >= 0 && isWetStreet(hours, i);
+}
+
+export type MotifKind = 'rain' | 'wind';
+
+export interface MotifWindow {
+  kind: MotifKind;
+  start: Date;
+  end: Date;
+  /** Max mm/h for rain, max km/h for wind. */
+  peak: number;
+}
+
+/** F10: consecutive forecast hours with rain ≥ 0.5 mm/h or gusts ≥ 40 km/h, merged into windows. */
+export function motifWindows(hours: readonly HourWeather[]): MotifWindow[] {
+  const result: MotifWindow[] = [];
+  const kinds: [MotifKind, (h: HourWeather) => number | null, number][] = [
+    ['rain', (h) => h.precipitation, MOTIF_RULE.rainMinMmPerHour],
+    ['wind', (h) => h.windGusts, MOTIF_RULE.gustMinKmh],
+  ];
+  for (const [kind, value, min] of kinds) {
+    let open: MotifWindow | null = null;
+    for (const h of hours) {
+      const v = value(h);
+      const hit = v !== null && v >= min;
+      // Values cover the preceding hour.
+      const start = h.time - HOUR_MS;
+      if (hit && open && open.end.getTime() === start) {
+        open.end = new Date(h.time);
+        open.peak = Math.max(open.peak, v);
+      } else if (hit) {
+        open = { kind, start: new Date(start), end: new Date(h.time), peak: v };
+        result.push(open);
+      } else {
+        open = null;
+      }
+    }
+  }
+  return result.sort((a, b) => a.start.getTime() - b.start.getTime() || a.kind.localeCompare(b.kind));
 }
