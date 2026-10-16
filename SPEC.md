@@ -36,10 +36,13 @@ Kern ist ein Score pro Spot und Zeitfenster, der Licht- und Wetterkriterien komb
 ### Licht
 - **F4** Golden Hour (Sonnenhöhe −4° bis +6°) und Blue Hour (−6° bis −4°) pro Tag und Spot, morgens und abends.
 - **F5** Sonnenhöhe und daraus abgeleitete Schattenlänge (Faktor 1/tan(Höhe)) im Tagesverlauf.
-- **F6** Zeitfenster, in denen der Sonnenazimut parallel zur Strassenachse liegt (Licht die Gasse entlang,
-  beide Richtungen) oder rechtwinklig dazu (Streiflicht auf Fassade). Toleranz einstellbar, Default ±10°.
-  Zusätzlich muss die Sonne über der Spot-Mindesthöhe (F3a) und unter einer Maximalhöhe liegen
-  (Default 20°, einstellbar), sonst fällt kein Licht die Gasse entlang.
+- **F6** Zeitfenster relativ zur Strassenachse, Toleranz einstellbar (Default ±10°):
+  - **Entlang:** Sonnenazimut parallel zur Achse (beide Richtungen) = Licht die Gasse entlang und Streiflicht
+    auf den Fassaden. Angezeigt wird, aus welcher Richtung die Sonne kommt.
+  - **Quer:** Sonnenazimut rechtwinklig zur Achse = Frontallicht auf die der Sonne zugewandte Fassadenseite,
+    Schattenkante über die Gasse. Angezeigt wird die beleuchtete Seite.
+  - Für beide muss die Sonne über der Spot-Mindesthöhe (F3a, mindestens 0°) und unter einer Maximalhöhe
+    liegen (Default 20°, einstellbar), sonst fällt kein Licht in die Gasse.
 
 ### Wetter
 - **F7** Bewölkung stündlich in drei Höhen (tief/mittel/hoch), eingeordnet als hart / wechselnd / weich.
@@ -89,7 +92,7 @@ Gespeichert in IndexedDB. Schemaänderungen nur mit Migration (Versionsnummer de
 | Build | Vite + TypeScript, ohne UI-Framework | Klein halten; Wechsel nur per SPEC-Entscheid |
 | PWA | vite-plugin-pwa (Manifest + Service Worker) | Homescreen-fähig auf iOS |
 | Tests | Vitest | Pflicht für Geometrie, Licht, Score |
-| Sonnenstand | SunCalc (lokal berechnet) | Kein Netz nötig |
+| Sonnenstand | SunCalc 2.x (lokal berechnet) | Kein Netz nötig; liefert Grad, Azimut ab Nord |
 | Wetter | Open-Meteo Forecast-API, stündlich | Ohne Key; nicht-kommerziell; CC BY 4.0 |
 | Karte | Leaflet, swisstopo-WMTS (Standard), OSM als Fallback | Attribution Pflicht |
 | Speicher | IndexedDB (Wrapper `idb`) | Pro Gerät getrennt |
@@ -115,7 +118,7 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
 | --- | --- | --- |
 | M0 | Gerüst: Vite/TS, PWA, Vitest, Pages-Deploy, Attributionen, Winkel-Helfer | erledigt |
 | M1 | Spots: Karte, Pin, Achse ziehen, Liste, IndexedDB, Export/Import (F1–F3a, N4, N7) | erledigt |
-| M2 | Licht: Golden/Blue Hour, Höhe/Schatten, Achsen-Fenster (F4–F6) | offen |
+| M2 | Licht: Golden/Blue Hour, Höhe/Schatten, Achsen-Fenster (F4–F6) | erledigt |
 | M3 | Wetter: Open-Meteo, Bewölkungsklassen, Cache (F7, N3) | offen |
 | M4 | Score und Ansichten (F11–F13, F15) | offen |
 | v1.1 | F8, F10 | offen |
@@ -130,6 +133,13 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
 - 2026-10-16 (M1): Export über das iOS-Teilen-Menü («In Dateien sichern»), Fallback Download.
   Import führt per ID zusammen, neueres `updatedAt` gewinnt, nichts wird gelöscht.
 - 2026-10-16 (M1): `fake-indexeddb` als Dev-Dependency für DB-Tests.
+- 2026-10-16 (M2): F6 korrigiert. «Rechtwinklig = Streiflicht» war physikalisch falsch; Streiflicht entsteht
+  bei Sonne parallel zur Fassade, also parallel zur Achse. Quer = Frontallicht + Schattenkante.
+- 2026-10-16 (M2): Tipp auf einen Spot öffnet das Licht-Detail (Tage heute + 4, Tageskurve, Fensterliste);
+  «Bearbeiten» führt zum Formular. Ein gewähltes Fenster (sonst die aktuelle Sonne) wird als gelber Strahl
+  vom Spot Richtung Sonne auf die Karte gezeichnet.
+- 2026-10-16 (M2): Berechnung in Gerätezeit; Abtastung alle 2 min, Ränder per Bisektion auf ~10 s.
+  Schattenfaktor nur für Achsen-Fenster und den höchsten Sonnenstand (nahe Horizont nichtssagend).
 
 ## 10. Offene Punkte
 
