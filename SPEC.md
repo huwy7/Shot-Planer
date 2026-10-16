@@ -46,9 +46,12 @@ Kern ist ein Score pro Spot und Zeitfenster, der Licht- und Wetterkriterien komb
 
 ### Wetter
 - **F7** Bewölkung stündlich in drei Höhen (tief/mittel/hoch), eingeordnet als hart / wechselnd / weich.
-- **F8** Nasse Strassen: Niederschlag in den letzten 1–3 h, aktuell trocken = Reflexions-Fenster.
+- **F8** Nasse Strassen: ≥ 0,3 mm Niederschlag in den 3 h davor und < 0,1 mm in der Stunde selbst =
+  «Strasse nass, trocken von oben». Lichtfenster darin erhalten einen Score-Bonus (siehe Score-Logik);
+  im Licht-Detail als blaues Band unter dem Wolkenband.
 - **F9** Nebel/Dunst über Sichtweite und Luftfeuchte.
-- **F10** Aktiver Regen und Wind als eigene Kategorie (kein Malus, sondern Motiv).
+- **F10** Aktiver Regen (≥ 0,5 mm/h) und Böen (≥ 40 km/h) als eigene «Wetter-Motive» ohne Score:
+  pro Tag im Licht-Detail, als Kurzhinweis in der Liste. Ab Tag 3 als «unsicher» markiert.
 
 ### Bewertung und Ansicht
 - **F11** Score 0–100 pro Spot und **Lichtfenster** für die nächsten 5 Tage. Ein Stundenwert wird daraus
@@ -73,6 +76,7 @@ Werte stehen in `src/lib/score.ts` (`SCORE_RULES`) und sind bis zur Kalibrierung
 | Blau: Wetter hart / wechselnd / weich | +20 / +20 / +5 |
 | Gold mit hohen Wolken 30–70 % und tiefen < 30 % («Chance auf Abend-/Morgenrot») | +10 |
 | Keine Prognose für die Fenstermitte («ohne Wetter») | 0 |
+| Nasse Strasse zur Fenstermitte (F8), Blau / übrige | +20 / +15 |
 
 Ampel: grün ≥ 70, gelb 45–69, rot < 45. «Nächstes gutes Fenster» (F13) = frühestes grünes Fenster;
 überlappt ein besseres grünes Fenster, gewinnt dieses.
@@ -136,7 +140,7 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
 | M2 | Licht: Golden/Blue Hour, Höhe/Schatten, Achsen-Fenster (F4–F6) | erledigt |
 | M3 | Wetter: Open-Meteo, Bewölkungsklassen, Cache (F7, N3) | erledigt |
 | M4 | Score und Ansichten (F11–F13, F15) | erledigt |
-| v1.1 | F8, F10 | offen |
+| v1.1 | F8, F10 | erledigt |
 | v1.2 | F9, F14 | offen |
 
 ## 9. Entscheide
@@ -172,6 +176,11 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
 - 2026-10-16 (M4): Treffer (F15) per «War gut / War schlecht» für den aktuellen Moment im Licht-Detail.
   Backup-Format v2 enthält Spots und Treffer; v1-Dateien bleiben importierbar. Treffer sind unveränderlich,
   Import fügt nur unbekannte IDs zu bestehenden Spots hinzu.
+
+- 2026-10-16 (v1.1): Wetterabruf um Böen (`wind_gusts_10m`) ergänzt; Prognose-Cache trägt eine
+  Formatversion, ältere Caches werden sofort neu geladen. Stundenwerte von Open-Meteo gelten für die
+  vorangehende Stunde; Motive werden dem Tag zugeordnet, in dem sie fallen.
+- 2026-10-16 (v1.1): Wetter-Motive nur für den gewählten Tag im Detail (5-Tage-Liste war zu lang).
 
 ## 10. Offene Punkte
 
