@@ -13,6 +13,9 @@ export interface SettingsHandlers {
   onRefreshWeather: () => void;
   spotCount: number;
   hitCount: number;
+  /** Point for the 3D-data probe and its label. */
+  probePoint: { lat: number; lon: number; label: string };
+  onProbe: (lat: number, lon: number) => Promise<{ ok: boolean; lines: string[] }>;
 }
 
 function numberField(label: string, hint: string, value: number, range: { min: number; max: number }, onChange: (v: number) => void) {
@@ -72,6 +75,20 @@ export function renderSettings(target: HTMLElement, handlers: SettingsHandlers):
     (v) => void save({ maxAltitudeDeg: v }),
   );
 
+  const probeOut = el('pre', { class: 'probe-output' });
+  const probeBtn = button('3D-Daten testen', async () => {
+    probeBtn.disabled = true;
+    probeOut.textContent = 'Teste …';
+    try {
+      const r = await handlers.onProbe(handlers.probePoint.lat, handlers.probePoint.lon);
+      probeOut.textContent = r.lines.join('\n');
+    } catch {
+      probeOut.textContent = 'Test fehlgeschlagen.';
+    } finally {
+      probeBtn.disabled = false;
+    }
+  }, 'btn');
+
   const sources = el('div');
   renderAttribution(sources);
 
@@ -94,6 +111,14 @@ export function renderSettings(target: HTMLElement, handlers: SettingsHandlers):
       { class: 'muted' },
       `${handlers.hitCount} Treffer gespeichert. Sie sind die Grundlage, um die Score-Regeln später zu kalibrieren, und sind im Export enthalten.`,
     ),
+    el('h2', {}, '3D-Daten (Test)'),
+    el(
+      'p',
+      { class: 'muted' },
+      `Prüft, ob swisstopo-Höhendaten (swissSURFACE3D) direkt im Browser lesbar sind. Lädt höchstens 64 KB. Ort: ${handlers.probePoint.label}.`,
+    ),
+    probeBtn,
+    probeOut,
     el('h2', {}, 'Sicherung'),
     el('p', { class: 'muted' }, 'Spots liegen nur auf diesem Gerät. Export schützt vor Datenverlust.'),
     el(

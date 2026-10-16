@@ -10,7 +10,8 @@ import { deleteSpot, getSetting, listHits, listSpots, putHits, putSetting, putSp
 import { DAYS_AHEAD, DetailSheet, describeSun, type DetailView } from './detailSheet';
 import { button, el } from './dom';
 import { renderSpotList, type ListSort } from './listView';
-import { isBaseLayerId, MapView } from './mapView';
+import { isBaseLayerId, MapView, START_VIEW } from './mapView';
+import { runProbe } from './probe';
 import { renderSettings } from './settingsView';
 import { SpotSheet, type Draft } from './spotSheet';
 import { WeatherStore } from './weatherStore';
@@ -419,6 +420,10 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
       onRefreshWeather: () => void weather.refresh(spots, true),
       spotCount: spots.length,
       hitCount,
+      probePoint: spots[0]
+        ? { lat: spots[0].lat, lon: spots[0].lon, label: `Spot «${spots[0].name}»` }
+        : { lat: START_VIEW.lat, lon: START_VIEW.lon, label: 'Bern' },
+      onProbe: runProbe,
     });
   }
 
