@@ -744,3 +744,48 @@ h3 {
 .probe-output:empty {
   display: none;
 }
+
+/* --- horizon (SPEC §11) --- */
+.horizon-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 4px 0;
+}
+
+.horizon-chart .skyline {
+  fill: var(--muted);
+  opacity: 0.45;
+}
+
+.horizon-chart .horizon {
+  stroke: var(--muted);
+  stroke-dasharray: 3 3;
+}
+
+.horizon-chart .grid {
+  stroke: var(--border);
+}
+
+.horizon-chart .tick {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.horizon-chart .axis-mark {
+  stroke: var(--axis);
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+
+.horizon-chart .sun-path {
+  fill: none;
+  stroke: var(--c-sun);
+  stroke-width: 2.5;
+}
+
+.horizon-chart .sun-path.hidden {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}

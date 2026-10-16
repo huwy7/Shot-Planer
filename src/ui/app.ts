@@ -73,6 +73,7 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     onDelete: (id) => void remove(id),
     onDrawAxis: (draft) => setMode({ kind: 'axis', draft, first: null }),
     onMove: (draft) => setMode({ kind: 'place', draft }),
+    onComputeHorizon: (draft) => void computeSpotHorizon(draft),
   });
   const detail = new DetailSheet({
     onDay: (dayIndex) => mode.kind === 'detail' && setMode({ ...mode, dayIndex, selected: null }),
@@ -275,9 +276,11 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   function confirmPlace(): void {
     if (mode.kind !== 'place') return;
     const { lat, lon } = mapView.center();
+    // A moved spot keeps nothing that depends on its position.
+    const moved = mode.draft && (mode.draft.lat !== lat || mode.draft.lon !== lon);
     const draft: Draft = mode.draft
-      ? { ...mode.draft, lat, lon }
-      : { id: null, name: '', note: '', lat, lon, axisDeg: null, minSunAltDeg: 0 };
+      ? { ...mode.draft, lat, lon, horizon: moved ? null : mode.draft.horizon }
+      : { id: null, name: '', note: '', lat, lon, axisDeg: null, minSunAltDeg: 0, horizon: null };
     setMode({ kind: 'edit', draft });
   }
 
@@ -295,6 +298,20 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     const [lat1, lon1] = mode.first;
     if (Math.abs(lat - lat1) < MIN_AXIS_POINT_DISTANCE_DEG && Math.abs(lon - lon1) < MIN_AXIS_POINT_DISTANCE_DEG) return;
     setMode({ kind: 'edit', draft: { ...mode.draft, axisDeg: cleanAxis(bearing(lat1, lon1, lat, lon)) } });
+  }
+
+  async function computeSpotHorizon(draft: Draft): Promise<void> {
+    sheet.setHorizonProgress('Starte …');
+    try {
+      const { loadHorizon } = await import('./horizonLoader');
+      const profile = await loadHorizon(draft.lat, draft.lon, (text) => sheet.setHorizonProgress(text));
+      // Ignore the result if the user moved on to another spot or position meanwhile.
+      if (mode.kind !== 'edit' || mode.draft.id !== draft.id || mode.draft.lat !== draft.lat || mode.draft.lon !== draft.lon) return;
+      sheet.applyHorizon(profile);
+    } catch (err) {
+      sheet.setHorizonProgress(null);
+      sheet.showError(err instanceof Error && err.name === 'HorizonError' ? err.message : 'Horizont konnte nicht berechnet werden.');
+    }
   }
 
   function locate(): void {

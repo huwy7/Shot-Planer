@@ -1,3 +1,4 @@
+import type { HorizonProfile } from '../lib/horizon';
 import { cleanAxis, clampMinSunAlt, MIN_SUN_ALT_RANGE, NAME_MAX_LENGTH, NOTE_MAX_LENGTH } from '../lib/spot';
 import { button, el, formatDeg } from './dom';
 
@@ -10,6 +11,7 @@ export interface Draft {
   lon: number;
   axisDeg: number | null;
   minSunAltDeg: number;
+  horizon?: HorizonProfile | null;
 }
 
 export interface SpotSheetHandlers {
@@ -19,7 +21,10 @@ export interface SpotSheetHandlers {
   onDelete: (id: string) => void;
   onDrawAxis: (draft: Draft) => void;
   onMove: (draft: Draft) => void;
+  onComputeHorizon: (draft: Draft) => void;
 }
+
+const dateFmt = new Intl.DateTimeFormat('de-CH', { day: 'numeric', month: 'numeric', year: 'numeric' });
 
 /** Bottom sheet for creating and editing a spot. */
 export class SpotSheet {
@@ -37,6 +42,9 @@ export class SpotSheet {
     max: String(MIN_SUN_ALT_RANGE.max),
     step: '1',
   });
+  private readonly horizonStatus = el('p', { class: 'hint' });
+  private readonly horizonBtn: HTMLButtonElement;
+  private horizonBusy = false;
   private readonly error = el('p', { class: 'error', role: 'alert' });
   private readonly deleteBtn: HTMLButtonElement;
 
@@ -60,6 +68,7 @@ export class SpotSheet {
     };
 
     this.deleteBtn = button('Löschen', () => this.confirmDelete(), 'btn danger');
+    this.horizonBtn = button('Horizont berechnen', () => this.draft && handlers.onComputeHorizon({ ...this.draft }), 'btn');
 
     this.root = el(
       'section',
@@ -86,7 +95,14 @@ export class SpotSheet {
         { class: 'field' },
         el('span', {}, 'Sonne sichtbar ab Höhe (°)'),
         this.minAlt,
-        el('p', { class: 'hint' }, 'Darunter verdecken Gebäude die Sonne. 0 = freie Sicht.'),
+        el('p', { class: 'hint' }, 'Manuelle Untergrenze. Mit berechnetem Horizont meist 0 lassen.'),
+      ),
+      el(
+        'div',
+        { class: 'field' },
+        el('span', {}, 'Horizont (Gebäude, Bäume, Gelände bis 300 m)'),
+        this.horizonBtn,
+        this.horizonStatus,
       ),
       el('div', { class: 'row' }, button('Position neu setzen', () => this.draft && handlers.onMove({ ...this.draft }), 'btn')),
       this.error,
@@ -113,6 +129,19 @@ export class SpotSheet {
     this.root.hidden = true;
   }
 
+  /** Progress text while the horizon loads; null when done. */
+  setHorizonProgress(text: string | null): void {
+    this.horizonBusy = text !== null;
+    this.render();
+    if (text !== null) this.horizonStatus.textContent = text;
+  }
+
+  applyHorizon(profile: HorizonProfile): void {
+    this.horizonBusy = false;
+    this.update({ horizon: profile });
+    this.render();
+  }
+
   showError(message: string): void {
     this.error.textContent = message;
   }
@@ -137,6 +166,11 @@ export class SpotSheet {
         : `Achse ${formatDeg(d.axisDeg)} / ${formatDeg(d.axisDeg + 180)}`;
     this.minAlt.value = String(d.minSunAltDeg);
     this.deleteBtn.hidden = d.id === null;
+    this.horizonBtn.disabled = this.horizonBusy;
+    this.horizonBtn.textContent = d.horizon ? 'Horizont neu berechnen' : 'Horizont berechnen (lädt einige MB)';
+    this.horizonStatus.textContent = d.horizon
+      ? `Berechnet am ${dateFmt.format(new Date(d.horizon.computedAt))} aus ${d.horizon.source}, Boden ${Math.round(d.horizon.groundM)} m ü. M.`
+      : 'Nicht berechnet. Dann gilt nur die manuelle Untergrenze.';
   }
 
   private confirmDelete(): void {

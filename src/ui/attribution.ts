@@ -2,6 +2,7 @@
 const SOURCES = [
   { label: 'Wetter: Open-Meteo (CC BY 4.0)', href: 'https://open-meteo.com/' },
   { label: 'Karte: © swisstopo', href: 'https://www.swisstopo.admin.ch/' },
+  { label: 'Höhendaten: swissSURFACE3D © swisstopo', href: 'https://www.swisstopo.admin.ch/de/hoehenmodell-swisssurface3d-raster' },
   { label: '© OpenStreetMap-Mitwirkende', href: 'https://www.openstreetmap.org/copyright' },
 ];
 

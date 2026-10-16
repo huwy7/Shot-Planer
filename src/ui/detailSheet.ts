@@ -6,6 +6,7 @@ import type { Spot } from '../lib/spot';
 import { shadowFactor, type SunPos } from '../lib/sun';
 import { describeClouds, type HourWeather, type MotifWindow } from '../lib/weather';
 import { renderDayChart } from './dayChart';
+import { renderHorizonChart } from './horizonChart';
 import { button, el, formatDeg } from './dom';
 
 export const DAYS_AHEAD = 5;
@@ -211,6 +212,11 @@ export class DetailSheet {
       el('p', { class: 'hint' }, v.weather.status),
       v.motifs.length > 0 ? motifs : '',
       el('p', { class: 'hint' }, summary),
+      v.spot.horizon ? el('h3', {}, 'Horizont und Sonnenbahn') : '',
+      v.spot.horizon ? renderHorizonChart(v.spot.horizon, day, v.spot) : '',
+      v.spot.horizon
+        ? el('p', { class: 'hint' }, `Grau: Gebäude, Bäume, Gelände (${v.spot.horizon.source}). Gelb: Sonne am Spot sichtbar, gestrichelt: verdeckt. Blau: Strassenachse.`)
+        : el('p', { class: 'hint' }, 'Kein Horizont berechnet. Unter «Bearbeiten» → «Horizont berechnen» wird die Verschattung durch Gebäude genau bestimmt.'),
       v.spot.axisDeg === null ? el('p', { class: 'hint warn' }, 'Keine Strassenachse gesetzt: Entlang/Quer fehlen. Unter «Bearbeiten» ziehen.') : '',
       v.ray ? el('p', { class: 'hint' }, `Gelber Strahl auf der Karte: ${v.ray.caption}`) : '',
       list,
