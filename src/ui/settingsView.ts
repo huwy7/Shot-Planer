@@ -8,6 +8,10 @@ export interface SettingsHandlers {
   lightSettings: LightSettings;
   /** Persists and returns the clamped settings. */
   onLightSettings: (s: LightSettings) => Promise<LightSettings>;
+  weatherStatus: string;
+  weatherLoading: boolean;
+  onRefreshWeather: () => void;
+  spotCount: number;
 }
 
 function numberField(label: string, hint: string, value: number, range: { min: number; max: number }, onChange: (v: number) => void) {
@@ -75,6 +79,14 @@ export function renderSettings(target: HTMLElement, handlers: SettingsHandlers):
     el('h2', {}, 'Licht'),
     tolerance.node,
     maxAlt.node,
+    el('h2', {}, 'Wetter'),
+    el('p', { class: 'muted' }, handlers.weatherStatus),
+    (() => {
+      const b = button('Jetzt aktualisieren', handlers.onRefreshWeather, 'btn');
+      b.disabled = handlers.weatherLoading || handlers.spotCount === 0;
+      return b;
+    })(),
+    handlers.spotCount === 0 ? el('p', { class: 'hint' }, 'Wetter wird erst mit mindestens einem Spot geladen.') : '',
     el('h2', {}, 'Sicherung'),
     el('p', { class: 'muted' }, 'Spots liegen nur auf diesem Gerät. Export schützt vor Datenverlust.'),
     el(

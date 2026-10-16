@@ -2,6 +2,7 @@ import { compassLabel } from '../lib/angles';
 import type { DayLight, LightWindow, WindowKind } from '../lib/light';
 import type { Spot } from '../lib/spot';
 import { shadowFactor, type SunPos } from '../lib/sun';
+import { describeClouds, weatherAt, type HourWeather } from '../lib/weather';
 import { renderDayChart } from './dayChart';
 import { button, el, formatDeg } from './dom';
 
@@ -31,6 +32,11 @@ export function describeSun(pos: SunPos): string {
 
 const signed = (deg: number): string => (deg < 0 ? `−${-deg}` : String(deg));
 
+function windowWeather(hours: HourWeather[], w: LightWindow): HTMLElement | null {
+  const h = weatherAt(hours, new Date((w.start.getTime() + w.end.getTime()) / 2));
+  return h ? el('span', { class: 'muted' }, describeClouds(h)) : null;
+}
+
 function windowDetail(w: LightWindow): string {
   const [lo, hi] = w.altitudeRange.map((a) => Math.round(a));
   const parts = [`Sonne ${lo === hi ? `${signed(lo)}°` : `${signed(lo)} bis ${signed(hi)}°`}`, `aus ${compassLabel(w.mid.azimuthDeg)}`];
@@ -48,6 +54,8 @@ export interface DetailView {
   selected: number | null;
   /** Sun direction drawn on the map, with its caption. */
   ray: { pos: SunPos; caption: string } | null;
+  /** Forecast hours of this day (empty when none) and a status line. */
+  weather: { hours: HourWeather[]; status: string };
 }
 
 export interface DetailHandlers {
@@ -96,6 +104,7 @@ export class DetailSheet {
           el('span', { class: 'window-head' }, el('strong', {}, `${time.format(w.start)}–${time.format(w.end)}`), ` ${KIND_LABEL[w.kind]}`),
           el('span', {}, w.label),
           el('span', { class: 'muted' }, windowDetail(w)),
+          windowWeather(v.weather.hours, w),
         ),
       );
       item.addEventListener('click', () => handlers.onSelect(v.selected === i ? null : i));
@@ -116,7 +125,7 @@ export class DetailSheet {
         button('✕', handlers.onClose, 'btn square'),
       ),
       days,
-      renderDayChart(day, v.now),
+      renderDayChart(day, v.now, v.weather.hours),
       el(
         'p',
         { class: 'legend' },
@@ -127,8 +136,15 @@ export class DetailSheet {
         el('span', { class: 'dot dot-along' }),
         ' Entlang ',
         el('span', { class: 'dot dot-across' }),
-        ' Quer',
+        ' Quer · Wolken ',
+        el('span', { class: 'dot cloud-hard' }),
+        ' hart ',
+        el('span', { class: 'dot cloud-mixed' }),
+        ' wechselnd ',
+        el('span', { class: 'dot cloud-soft' }),
+        ' weich',
       ),
+      el('p', { class: 'hint' }, v.weather.status),
       el('p', { class: 'hint' }, summary),
       spot.axisDeg === null ? el('p', { class: 'hint warn' }, 'Keine Strassenachse gesetzt: Entlang/Quer fehlen. Unter «Bearbeiten» ziehen.') : null,
       v.ray ? el('p', { class: 'hint' }, `Gelber Strahl auf der Karte: ${v.ray.caption}`) : null,

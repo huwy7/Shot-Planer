@@ -3,6 +3,7 @@ import { backupFileName, createBackup, mergeSpots, parseBackup } from '../lib/ba
 import { clampLightSettings, computeDayLight, localDay, type LightSettings } from '../lib/light';
 import { cleanAxis, createSpot, updateSpot, validateSpotInput, type Spot } from '../lib/spot';
 import { sunAt } from '../lib/sun';
+import { hoursBetween, locationKey } from '../lib/weather';
 import { deleteSpot, getSetting, listSpots, putSetting, putSpot, putSpots, type Db } from '../db/db';
 import { DetailSheet, describeSun, type DetailView } from './detailSheet';
 import { button, el } from './dom';
@@ -10,6 +11,7 @@ import { renderSpotList } from './listView';
 import { isBaseLayerId, MapView } from './mapView';
 import { renderSettings } from './settingsView';
 import { SpotSheet, type Draft } from './spotSheet';
+import { WeatherStore } from './weatherStore';
 
 type Tab = 'map' | 'list' | 'settings';
 
@@ -24,6 +26,7 @@ type Mode =
 const MIN_AXIS_POINT_DISTANCE_DEG = 0.00002; // ~2 m; closer taps give a meaningless bearing
 
 const spotCount = (n: number): string => (n === 1 ? '1 Spot' : `${n} Spots`);
+const dateTime = new Intl.DateTimeFormat('de-CH', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   let spots: Spot[] = await listSpots(db);
@@ -34,6 +37,19 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
   let lightSettings: LightSettings = clampLightSettings(await getSetting<Partial<LightSettings>>(db, 'light'));
   /** Spot the map was last centered on for a sheet, so re-renders do not fight the user's panning. */
   let revealedFor: string | null = null;
+
+  const weather = new WeatherStore(db, () => {
+    if (mode.kind === 'detail') renderMapChrome();
+    if (tab === 'settings') renderSettingsView();
+  });
+  await weather.load();
+
+  function weatherStatus(): string {
+    const { forecast, loading, error } = weather.state;
+    if (loading) return 'Wetter wird geladen …';
+    const stand = forecast ? `Stand ${dateTime.format(new Date(forecast.fetchedAt))}` : 'noch keine Prognose';
+    return error ? `${error} (${stand})` : `Wetter: Open-Meteo, ${stand}`;
+  }
 
   // --- layout ---
   const mapEl = el('div', { class: 'map' });
@@ -120,7 +136,10 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
       const pos = sun(now);
       if (pos.altitudeDeg > 0) ray = { pos, caption: `Sonne jetzt, ${describeSun(pos)}` };
     }
-    return { spot, dayIndex: m.dayIndex, day, now, selected, ray };
+    const hours = hoursBetween(weather.state.forecast?.locations[locationKey(spot.lat, spot.lon)], day.dayStart, day.dayEnd);
+    const status =
+      hours.length === 0 && !weather.state.loading ? `Keine Wetterprognose für diesen Tag. ${weatherStatus()}` : weatherStatus();
+    return { spot, dayIndex: m.dayIndex, day, now, selected, ray, weather: { hours, status } };
   }
 
   function renderMapChrome(): void {
@@ -199,12 +218,14 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     for (const [id, b] of tabButtons) b.setAttribute('aria-current', String(id === tab));
     if (tab === 'map') mapView.refreshSize();
     if (tab === 'list') renderList();
+    if (tab === 'settings') renderSettingsView();
   }
 
   // --- actions ---
   function openDetail(id: string): void {
     if (!spots.some((s) => s.id === id)) return;
     setMode({ kind: 'detail', spotId: id, dayIndex: 0, selected: null });
+    void weather.refresh(spots);
   }
 
   function confirmPlace(): void {
@@ -310,12 +331,21 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
     return lightSettings;
   }
 
-  renderSettings(settingsSection, {
-    onExport: exportSpots,
-    onImport: importSpots,
-    lightSettings,
-    onLightSettings: changeLightSettings,
-  });
+  function renderSettingsView(): void {
+    renderSettings(settingsSection, {
+      onExport: exportSpots,
+      onImport: importSpots,
+      lightSettings,
+      onLightSettings: changeLightSettings,
+      weatherStatus: weatherStatus(),
+      weatherLoading: weather.state.loading,
+      onRefreshWeather: () => void weather.refresh(spots, true),
+      spotCount: spots.length,
+    });
+  }
+
+  renderSettingsView();
+  void weather.refresh(spots);
   showTab('map');
   renderMapChrome();
 }

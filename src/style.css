@@ -580,3 +580,36 @@ path.sun-dot {
   stroke-opacity: 0.4;
   stroke-width: 1;
 }
+
+/* --- cloud classes (F7) --- */
+:root {
+  --c-hard: #f2b705;
+  --c-mixed: #8fa3b8;
+  --c-soft: #5b6470;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-hard: #ffd23f;
+    --c-mixed: #8a9bb0;
+    --c-soft: #4a525c;
+  }
+}
+
+.day-chart rect.cloud-hard,
+.dot.cloud-hard {
+  fill: var(--c-hard);
+  background: var(--c-hard);
+}
+
+.day-chart rect.cloud-mixed,
+.dot.cloud-mixed {
+  fill: var(--c-mixed);
+  background: var(--c-mixed);
+}
+
+.day-chart rect.cloud-soft,
+.dot.cloud-soft {
+  fill: var(--c-soft);
+  background: var(--c-soft);
+}
