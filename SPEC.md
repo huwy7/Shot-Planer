@@ -96,7 +96,7 @@ Gespeichert in IndexedDB. Schemaänderungen nur mit Migration (Versionsnummer de
 | Wetter | Open-Meteo Forecast-API, stündlich | Ohne Key; nicht-kommerziell; CC BY 4.0 |
 | Karte | Leaflet, swisstopo-WMTS (Standard), OSM als Fallback | Attribution Pflicht |
 | Speicher | IndexedDB (Wrapper `idb`) | Pro Gerät getrennt |
-| Cache | Service Worker, letzte Prognose offline lesbar | |
+| Cache | Letzte Prognose in IndexedDB (offline lesbar); Service Worker nur für die App-Dateien | Siehe §9 |
 | Deploy | GitHub Actions → GitHub Pages | Push auf `main` deployt |
 
 ## 6. Erlaubte Netzwerkziele zur Laufzeit
@@ -119,7 +119,7 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
 | M0 | Gerüst: Vite/TS, PWA, Vitest, Pages-Deploy, Attributionen, Winkel-Helfer | erledigt |
 | M1 | Spots: Karte, Pin, Achse ziehen, Liste, IndexedDB, Export/Import (F1–F3a, N4, N7) | erledigt |
 | M2 | Licht: Golden/Blue Hour, Höhe/Schatten, Achsen-Fenster (F4–F6) | erledigt |
-| M3 | Wetter: Open-Meteo, Bewölkungsklassen, Cache (F7, N3) | offen |
+| M3 | Wetter: Open-Meteo, Bewölkungsklassen, Cache (F7, N3) | erledigt |
 | M4 | Score und Ansichten (F11–F13, F15) | offen |
 | v1.1 | F8, F10 | offen |
 | v1.2 | F9, F14 | offen |
@@ -140,6 +140,16 @@ Nur: die eigene Pages-Domain, `api.open-meteo.com`, `wmts.geo.admin.ch`, `tile.o
   vom Spot Richtung Sonne auf die Karte gezeichnet.
 - 2026-10-16 (M2): Berechnung in Gerätezeit; Abtastung alle 2 min, Ränder per Bisektion auf ~10 s.
   Schattenfaktor nur für Achsen-Fenster und den höchsten Sonnenstand (nahe Horizont nichtssagend).
+
+- 2026-10-16 (M3): Ein Open-Meteo-Request für alle Spots; Koordinaten auf 0,01° (~1 km) gerundet und
+  zusammengelegt. Abgefragt: Bewölkung gesamt/tief/mittel/hoch, Niederschlag, Sichtweite, Luftfeuchte
+  (letztere für F8/F9 vorgehalten), 5 Tage, Unix-Zeit.
+- 2026-10-16 (M3): Bewölkungsklassen (F7), Annahme bis zur Kalibrierung mit F15:
+  weich = tief ≥ 70 % oder mittel ≥ 80 %; hart = tief < 20 % und mittel < 30 % und hoch < 70 %; sonst wechselnd.
+- 2026-10-16 (M3): Prognose-Cache in IndexedDB statt im Service Worker (einfacher, gleiches Ergebnis).
+  Automatisch geladen beim App-Start und beim Öffnen eines Spots, nur wenn älter als 60 min oder ein Spot
+  ausserhalb der bisherigen Raster liegt; manuell über «Jetzt aktualisieren». Bei Fehlern bleibt die alte
+  Prognose sichtbar, mit Stand und Fehlermeldung.
 
 ## 10. Offene Punkte
 
