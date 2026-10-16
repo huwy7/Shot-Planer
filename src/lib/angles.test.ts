@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { angularDiff, axisDiff, bearing, normalizeAxis, normalizeDeg, sunCalcAzimuthToDeg } from './angles';
+import { angularDiff, axisDiff, bearing, destination, normalizeAxis, normalizeDeg, sunCalcAzimuthToDeg } from './angles';
+
+describe('destination', () => {
+  it('moves north by about 111 m per 0.001° latitude', () => {
+    const [lat, lon] = destination(46.948, 7.447, 0, 111.2);
+    expect(lat).toBeCloseTo(46.949, 4);
+    expect(lon).toBeCloseTo(7.447, 9);
+  });
+  it('round-trips with bearing', () => {
+    const [lat, lon] = destination(46.948, 7.447, 63, 50);
+    expect(bearing(46.948, 7.447, lat, lon)).toBeCloseTo(63, 3);
+  });
+});
 
 describe('normalizeDeg', () => {
   it('wraps into [0, 360)', () => {

@@ -35,6 +35,20 @@ export function bearing(lat1: number, lon1: number, lat2: number, lon2: number):
   return normalizeDeg(toDeg(Math.atan2(y, x)));
 }
 
+const EARTH_RADIUS_M = 6371008.8;
+
+/** Point reached from a start point after `distanceM` along `bearingDeg` on a sphere. */
+export function destination(lat: number, lon: number, bearingDeg: number, distanceM: number): [number, number] {
+  const delta = distanceM / EARTH_RADIUS_M;
+  const theta = toRad(bearingDeg);
+  const phi1 = toRad(lat);
+  const lambda1 = toRad(lon);
+  const phi2 = Math.asin(Math.sin(phi1) * Math.cos(delta) + Math.cos(phi1) * Math.sin(delta) * Math.cos(theta));
+  const lambda2 =
+    lambda1 + Math.atan2(Math.sin(theta) * Math.sin(delta) * Math.cos(phi1), Math.cos(delta) - Math.sin(phi1) * Math.sin(phi2));
+  return [toDeg(phi2), toDeg(lambda2)];
+}
+
 /** Converts a SunCalc azimuth (radians, from south, westward positive) to degrees from north, clockwise. */
 export function sunCalcAzimuthToDeg(azimuthRad: number): number {
   return normalizeDeg(toDeg(azimuthRad) + 180);
