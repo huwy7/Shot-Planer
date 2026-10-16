@@ -1,10 +1,10 @@
 import { compassLabel } from '../lib/angles';
 import type { HitRating } from '../lib/hits';
 import type { LightWindow, WindowKind } from '../lib/light';
-import type { RankedWindow, ScoredDay, ScoredWindow } from '../lib/score';
+import { RELIABLE_PRECIP_DAYS, type RankedWindow, type ScoredDay, type ScoredWindow } from '../lib/score';
 import type { Spot } from '../lib/spot';
 import { shadowFactor, type SunPos } from '../lib/sun';
-import { describeClouds, type HourWeather } from '../lib/weather';
+import { describeClouds, type HourWeather, type MotifWindow } from '../lib/weather';
 import { renderDayChart } from './dayChart';
 import { button, el, formatDeg } from './dom';
 
@@ -52,6 +52,16 @@ export function reasonsText(s: ScoredWindow): string {
   return s.reasons.map((r) => (r.points === 0 ? r.text : `${r.text} ${r.points > 0 ? '+' : '−'}${Math.abs(r.points)}`)).join(', ');
 }
 
+export const MOTIF_ICON: Record<MotifWindow['kind'], string> = { rain: '☔', wind: '💨' };
+
+export function describeMotif(m: MotifWindow, dayText: string, dayIndex: number): string {
+  const what =
+    m.kind === 'rain'
+      ? `Regen ${dayText} ${time.format(m.start)}–${time.format(m.end)}, bis ${m.peak.toLocaleString('de-CH', { maximumFractionDigits: 1 })} mm/h`
+      : `Böen ${dayText} ${time.format(m.start)}–${time.format(m.end)}, bis ${Math.round(m.peak)} km/h`;
+  return `${MOTIF_ICON[m.kind]} ${what}${dayIndex >= RELIABLE_PRECIP_DAYS ? ' (unsicher)' : ''}`;
+}
+
 export function scoreBadge(s: { score: number; ampel: string }): HTMLElement {
   return el('span', { class: `badge ampel-${s.ampel}`, 'aria-label': `Score ${s.score}` }, String(s.score));
 }
@@ -61,6 +71,8 @@ export interface DetailView {
   dayIndex: number;
   scoredDay: ScoredDay;
   top: RankedWindow[];
+  /** F10 motifs of the shown day that have not ended yet. */
+  motifs: MotifWindow[];
   now: Date;
   selected: number | null;
   /** Sun direction drawn on the map, with its caption. */
@@ -115,6 +127,11 @@ export class DetailSheet {
       );
       item.addEventListener('click', () => handlers.onJump(t.dayIndex, t.index));
       top.append(el('li', {}, item));
+    }
+
+    const motifs = el('ul', { class: 'motif-list' });
+    for (const motif of v.motifs) {
+      motifs.append(el('li', {}, describeMotif(motif, dayLabel(dayStartOf(v.dayIndex), v.dayIndex), v.dayIndex)));
     }
 
     const days = el('div', { class: 'chips', role: 'tablist' });
@@ -187,9 +204,12 @@ export class DetailSheet {
         el('span', { class: 'dot cloud-mixed' }),
         ' wechselnd ',
         el('span', { class: 'dot cloud-soft' }),
-        ' weich',
+        ' weich ',
+        el('span', { class: 'dot wet' }),
+        ' nasse Strasse',
       ),
       el('p', { class: 'hint' }, v.weather.status),
+      v.motifs.length > 0 ? motifs : '',
       el('p', { class: 'hint' }, summary),
       v.spot.axisDeg === null ? el('p', { class: 'hint warn' }, 'Keine Strassenachse gesetzt: Entlang/Quer fehlen. Unter «Bearbeiten» ziehen.') : '',
       v.ray ? el('p', { class: 'hint' }, `Gelber Strahl auf der Karte: ${v.ray.caption}`) : '',

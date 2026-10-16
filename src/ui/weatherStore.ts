@@ -1,5 +1,6 @@
 import { getForecast, putForecast, type Db } from '../db/db';
 import {
+  FORECAST_FORMAT,
   buildForecastUrl,
   needsRefresh,
   parseForecastResponse,
@@ -48,7 +49,11 @@ export class WeatherStore {
         } catch {
           throw new WeatherError(`Open-Meteo antwortet nicht lesbar (HTTP ${res.status}).`);
         }
-        const forecast: Forecast = { fetchedAt: new Date().toISOString(), locations: parseForecastResponse(json, locations) };
+        const forecast: Forecast = {
+          format: FORECAST_FORMAT,
+          fetchedAt: new Date().toISOString(),
+          locations: parseForecastResponse(json, locations),
+        };
         await putForecast(this.db, forecast);
         this.state = { forecast, loading: false, error: null };
       } catch (err) {

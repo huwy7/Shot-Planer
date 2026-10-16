@@ -1,6 +1,7 @@
 import type { RankedWindow } from '../lib/score';
+import type { MotifWindow } from '../lib/weather';
 import { sortByName, type Spot } from '../lib/spot';
-import { dayLabel, formatRange, KIND_LABEL, scoreBadge } from './detailSheet';
+import { dayLabel, formatRange, KIND_LABEL, MOTIF_ICON, scoreBadge } from './detailSheet';
 import { button, el, formatDeg } from './dom';
 
 export type ListSort = 'next' | 'name';
@@ -9,6 +10,8 @@ export interface ListEntry {
   spot: Spot;
   /** Next green window (F13), or null. */
   next: RankedWindow | null;
+  /** First upcoming F10 motif, if any. */
+  motif?: { dayIndex: number; motif: MotifWindow } | null;
 }
 
 export interface ListHandlers {
@@ -51,7 +54,8 @@ export function renderSpotList(target: HTMLElement, entries: readonly ListEntry[
 
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const list = el('ul', { class: 'spot-list' });
-  for (const { spot, next } of sortEntries(entries, sort)) {
+  const dayOf = (i: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+  for (const { spot, next, motif } of sortEntries(entries, sort)) {
     const details = [
       spot.axisDeg === null ? 'keine Achse' : `Achse ${formatDeg(spot.axisDeg)}`,
       spot.minSunAltDeg > 0 ? `Sonne ab ${formatDeg(spot.minSunAltDeg)}` : null,
@@ -61,7 +65,7 @@ export function renderSpotList(target: HTMLElement, entries: readonly ListEntry[
           'span',
           { class: 'next-good' },
           scoreBadge(next),
-          ` ${dayLabel(new Date(today.getFullYear(), today.getMonth(), today.getDate() + next.dayIndex), next.dayIndex)} ${formatRange(next.window)} · ${KIND_LABEL[next.window.kind]}`,
+          ` ${dayLabel(dayOf(next.dayIndex), next.dayIndex)} ${formatRange(next.window)} · ${KIND_LABEL[next.window.kind]}`,
         )
       : el('span', { class: 'muted' }, 'Kein grünes Fenster in 5 Tagen');
     const item = el(
@@ -69,6 +73,9 @@ export function renderSpotList(target: HTMLElement, entries: readonly ListEntry[
       { type: 'button', class: 'spot-item' },
       el('span', { class: 'spot-name' }, spot.name),
       nextLine,
+      motif
+        ? el('span', { class: 'muted' }, `${MOTIF_ICON[motif.motif.kind]} ${dayLabel(dayOf(motif.dayIndex), motif.dayIndex)} ${motif.motif.kind === 'rain' ? 'Regen' : 'Böen'}`)
+        : '',
       el('span', { class: 'muted' }, details.join(' · ')),
       spot.note ? el('span', { class: 'spot-note' }, spot.note) : '',
     );

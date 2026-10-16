@@ -1,5 +1,5 @@
 import type { DayLight } from '../lib/light';
-import { classifyClouds, type HourWeather } from '../lib/weather';
+import { classifyClouds, isWetStreet, type HourWeather } from '../lib/weather';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const W = 300;
@@ -10,6 +10,7 @@ const ALT_MAX = 70;
 const STRIP_H = 8;
 const WEATHER_GAP = 3;
 const WEATHER_H = 10;
+const WET_H = 4;
 const HOUR_MS = 3600 * 1000;
 
 function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>): SVGElementTagNameMap[K] {
@@ -29,7 +30,8 @@ export function renderDayChart(day: DayLight, now: Date, weather: readonly HourW
   const y = (alt: number) => (H - ((Math.min(ALT_MAX, Math.max(ALT_MIN, alt)) - ALT_MIN) / (ALT_MAX - ALT_MIN)) * H).toFixed(1);
 
   const weatherTop = H + WEATHER_GAP;
-  const labelTop = weatherTop + WEATHER_H;
+  const wetTop = weatherTop + WEATHER_H + 1;
+  const labelTop = wetTop + WET_H;
   const root = svg('svg', { viewBox: `0 0 ${W} ${labelTop + LABEL_H}`, class: 'day-chart', role: 'img' });
   root.setAttribute('aria-label', 'Sonnenhöhe im Tagesverlauf');
 
@@ -56,6 +58,16 @@ export function renderDayChart(day: DayLight, now: Date, weather: readonly HourW
     label.textContent = `${h}`;
     root.append(label);
   }
+
+  weather.forEach((h, i) => {
+    if (!isWetStreet(weather, i)) return;
+    // Wet-street hours cover the hour after the timestamp (dry now, rain before).
+    const start = new Date(Math.max(h.time - HOUR_MS / 2, t0));
+    const end = new Date(Math.min(h.time + HOUR_MS / 2, t0 + span));
+    if (end <= start) return;
+    const x0 = Number(x(start));
+    root.append(svg('rect', { x: x0, y: wetTop, width: Math.max(0.5, Number(x(end)) - x0), height: WET_H, class: 'wet' }));
+  });
 
   for (const h of weather) {
     const cls = classifyClouds(h);

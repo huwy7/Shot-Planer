@@ -162,6 +162,7 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
       dayIndex: m.dayIndex,
       scoredDay,
       top: topWindows(plan, now),
+      motifs: scoredDay.motifs.filter((m) => m.end.getTime() > now.getTime()),
       now,
       selected,
       ray,
@@ -228,7 +229,11 @@ export async function startApp(root: HTMLElement, db: Db): Promise<void> {
 
   function renderList(): void {
     const now = new Date();
-    const entries = spots.map((spot) => ({ spot, next: nextGood(planFor(spot, now), now) }));
+    const entries = spots.map((spot) => {
+      const plan = planFor(spot, now);
+      const motif = plan.days.flatMap((d) => d.motifs.filter((m) => m.end > now).map((m) => ({ dayIndex: d.dayIndex, motif: m })))[0] ?? null;
+      return { spot, next: nextGood(plan, now), motif };
+    });
     renderSpotList(listSection, entries, listSort, now, {
       onSelect: (id) => {
         showTab('map');

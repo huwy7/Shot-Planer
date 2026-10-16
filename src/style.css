@@ -702,3 +702,33 @@ h3 {
   gap: 6px;
   font-size: 0.9rem;
 }
+
+/* --- wet streets (F8) and motifs (F10) --- */
+:root {
+  --c-wet: #1b7fc4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-wet: #4fb3ff;
+  }
+}
+
+.day-chart rect.wet {
+  fill: var(--c-wet);
+}
+
+.dot.wet {
+  background: var(--c-wet);
+}
+
+.motif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+.motif-list li {
+  padding: 4px 0;
+}
