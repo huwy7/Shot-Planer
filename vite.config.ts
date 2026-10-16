@@ -13,6 +13,10 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // The horizon reader (geotiff.js and its decoders) is only useful online; load it on demand.
+        globIgnores: ['**/assets/{horizonLoader,geotiff,lerc,zstd,pako.esm,jpeg,lzw,deflate,packbits,webimage,raw,basedecoder}-*.js'],
+      },
       includeAssets: ['apple-touch-icon.png', 'icon.svg'],
       manifest: {
         name: 'Shot-Planer Street',
