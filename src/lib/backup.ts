@@ -1,17 +1,20 @@
+import { parseHit, type Hit } from './hits';
 import { parseSpot, type Spot } from './spot';
 
 export const BACKUP_FORMAT = 'shot-planer-backup';
-export const BACKUP_VERSION = 1;
+/** v1: spots only. v2: spots and hits (F15). */
+export const BACKUP_VERSION = 2;
 
 export interface Backup {
   format: typeof BACKUP_FORMAT;
   version: number;
   exportedAt: string;
   spots: Spot[];
+  hits: Hit[];
 }
 
-export function createBackup(spots: readonly Spot[], now: Date): Backup {
-  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: now.toISOString(), spots: [...spots] };
+export function createBackup(spots: readonly Spot[], hits: readonly Hit[], now: Date): Backup {
+  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: now.toISOString(), spots: [...spots], hits: [...hits] };
 }
 
 export function backupFileName(now: Date): string {
@@ -22,6 +25,7 @@ export class BackupError extends Error {}
 
 export interface ParsedBackup {
   spots: Spot[];
+  hits: Hit[];
   rejected: number;
 }
 
@@ -53,7 +57,30 @@ export function parseBackup(text: string): ParsedBackup {
     if (prev) rejected++;
     if (!prev || spot.updatedAt > prev.updatedAt) byId.set(spot.id, spot);
   }
-  return { spots: [...byId.values()], rejected };
+  const hits = new Map<string, Hit>();
+  const rawHits = Array.isArray(d.hits) ? d.hits : [];
+  for (const raw of rawHits) {
+    const hit = parseHit(raw);
+    if (!hit || hits.has(hit.id)) rejected++;
+    else hits.set(hit.id, hit);
+  }
+  return { spots: [...byId.values()], hits: [...hits.values()], rejected };
+}
+
+/** Hits are immutable: only unknown ids whose spot exists are added. Returns the new hits and the orphans. */
+export function mergeHits(
+  existingIds: ReadonlySet<string>,
+  spotIds: ReadonlySet<string>,
+  incoming: readonly Hit[],
+): { toWrite: Hit[]; orphaned: number } {
+  const toWrite: Hit[] = [];
+  let orphaned = 0;
+  for (const hit of incoming) {
+    if (existingIds.has(hit.id)) continue;
+    if (!spotIds.has(hit.spotId)) orphaned++;
+    else toWrite.push(hit);
+  }
+  return { toWrite, orphaned };
 }
 
 export interface MergeResult {
